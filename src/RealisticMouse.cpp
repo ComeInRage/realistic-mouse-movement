@@ -17,7 +17,7 @@
 #undef min
 #endif
 
-namespace eve
+namespace real_mouse
 {
   Mouse& Mouse::Init() noexcept
   {

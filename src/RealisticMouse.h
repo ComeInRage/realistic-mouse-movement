@@ -3,7 +3,7 @@
 #include <chrono>
 #include <mutex>
 
-namespace eve
+namespace real_mouse
 {
   using namespace std::chrono_literals;
 
