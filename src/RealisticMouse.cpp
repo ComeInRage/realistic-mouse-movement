@@ -5,8 +5,17 @@
 #include <numbers>
 #include <thread>
 
-#include "Core.h"
-#include "Mouse.h"
+#include "RealisticMouse.h"
+
+#ifdef max
+#define DISABLED_max max
+#undef max
+#endif
+
+#ifdef min
+#define DISABLED_min min
+#undef min
+#endif
 
 namespace eve
 {
@@ -16,14 +25,14 @@ namespace eve
     return mouse;
   }
 
-  Coords Mouse::GetPosition() noexcept
+  std::pair<std::int32_t, std::int32_t> Mouse::GetPosition()
   {
     POINT pos{};
     if (!GetCursorPos(&pos))
     {
-      UnknownError;
+      throw std::runtime_error{"Unable to get cursor position"};
     }
-    return Coords{ pos.x, pos.y };
+    return { pos.x, pos.y };
   }
 
   void Mouse::Click(Buttons button/* = Buttons::LEFT*/, std::chrono::milliseconds clickDuration/* = 100ms*/)
@@ -89,18 +98,18 @@ namespace eve
 
   void Mouse::PushDown(Buttons button/* = Buttons::LEFT*/)
   {
-    auto coords = GetPosition();
+    auto [x, y] = GetPosition();
     DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_RIGHTDOWN);
-    MOUSEINPUT mouseInput{ coords.x, coords.y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
+    MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
     INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
     SendInput(1, &input, sizeof(input));
   }
 
   void Mouse::PushUp(Buttons button/* = Buttons::LEFT*/)
   {
-    auto coords = GetPosition();
+    auto [x, y] = GetPosition();
     DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP);
-    MOUSEINPUT mouseInput{ coords.x, coords.y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
+    MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
     INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
     SendInput(1, &input, sizeof(input));
   }
@@ -196,15 +205,14 @@ namespace eve
 #endif
 
       Move(currentX + static_cast<std::int32_t>(stepX), currentY + static_cast<std::int32_t>(stepY));
-      WaitForMove();
 
       double _ = 0;
       stepX = std::modf(stepX, &_);
       stepY = std::modf(stepY, &_);
 
-      auto currentPos = GetPosition();
-      currentX   = currentPos.x;
-      currentY   = currentPos.y;
+      auto [currX, currY] = GetPosition();
+      currentX   = currX;
+      currentY   = currY;
       remainDist = std::hypot(destX - currentX, destY - currentY);
 
       std::this_thread::sleep_for(iterTimeout);
@@ -213,23 +221,13 @@ namespace eve
     Move(destX, destY);
   }
 
-  void Mouse::RealisticMove(Coords coords, std::int32_t velocity/* = 1000*/)
-  {
-    RealisticMove(coords.x, coords.y, velocity);
-  }
-
   void Mouse::SetPosition(std::int32_t x, std::int32_t y)
   {
     SetCursorPos(x, y);
   }
 
-  void Mouse::SetPosition(Coords coords)
-  {
-    SetPosition(coords.x, coords.y);
-  }
-
-  void Mouse::WaitForMove() const
-  {
-    
-  }
+  //void Mouse::WaitForMove() const
+  //{
+  //  
+  //}
 }

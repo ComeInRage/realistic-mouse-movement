@@ -7,8 +7,6 @@ namespace eve
 {
   using namespace std::chrono_literals;
 
-  struct Coords;
-
   // Class that represents the computer mouse.
   class Mouse
   {
@@ -32,7 +30,7 @@ namespace eve
     static Mouse& Init() noexcept;
 
     // Returns current coordinates. Don't require Mouse object creation.
-    static Coords GetPosition() noexcept;
+    static std::pair<std::int32_t, std::int32_t> GetPosition();
 
     // Simulates mouse click on current coordinates.
     // Takes the mouse button and the time during which mouse button will be pressed.
@@ -52,20 +50,12 @@ namespace eve
     // Note that, unlike SetPosition(....), this function moves mouse smoothly.
     void   RealisticMove(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
-    // Moves mouse to given coordinates.
-    // Note that, unlike SetPosition(....), this function moves mouse smoothly.
-    void   RealisticMove(Coords coords, std::int32_t velocity = 1000);
-
     // Sets mouse coordinates to given ones.
     // Note that, unlike Move(....), this function instantly sets coordinates.
     void   SetPosition(std::int32_t x, std::int32_t y);
 
-    // Sets mouse coordinates to given ones.
-    // Note that, unlike Move(....), this function instantly sets coordinates.
-    void   SetPosition(Coords coords);
-
     // TODO for multithreading
-    void   WaitForMove() const;
+    //void   WaitForMove() const;
 
   private:
     Mouse() = default;
