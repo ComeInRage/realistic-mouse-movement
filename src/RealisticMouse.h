@@ -38,7 +38,7 @@ namespace real_mouse
 
     // Moves mouse to given coordinates.
     // Note that, unlike SetPosition(....), this function moves mouse smoothly.
-    void   Move(std::int32_t x, std::int32_t y);
+    void   Move(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
     // Pushes down given mouse button and holds one in pressed state.
     void   PushDown(Buttons button = Buttons::LEFT);

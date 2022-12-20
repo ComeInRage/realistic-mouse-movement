@@ -58,22 +58,19 @@ namespace real_mouse
     t.detach();
   }
 
-  void Mouse::Move(std::int32_t destX, std::int32_t destY)
+  void Mouse::Move(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
   {
     namespace ch = std::chrono;
-    static constexpr double velocity = 1500.; // pixels per second
-    
-    constexpr auto distPerCycle = 1.;
-    constexpr ch::nanoseconds timeout{static_cast<std::int64_t>((distPerCycle / velocity) * 1000000)}; // amount of time spend to one pixel in nanoseconds
-    
-    double d = 1. / 1500.;
+
+    std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) }; // amount of time spend to one pixel in nanoseconds
 
     auto [startX, startY] = GetPosition();
-    auto remainDistance = std::hypot(destX - startX, destY - startY);
-    auto ratio = remainDistance / distPerCycle;
+    auto xDist = destX - startX;
+    auto yDist = destY - startY;
+    auto remainDistance = std::hypot(xDist, yDist);
 
-    auto distPerCycleX = (destX - startX) / ratio;
-    auto distPerCycleY = (destY - startY) / ratio;
+    auto distPerCycleX = std::min((destX - startX) / remainDistance, 1.);
+    auto distPerCycleY = std::min((destY - startY) / remainDistance, 1.);
 
     double currX = startX;
     double currY = startY;
@@ -84,13 +81,11 @@ namespace real_mouse
       currY += distPerCycleY;
 
       remainDistance = std::hypot(destX - currX, destY - currY);
-      ratio          = remainDistance / distPerCycle;
-      distPerCycleX  = (destX - currX) / ratio;
-      distPerCycleY  = (destY - currY) / ratio;
 
       SetPosition(static_cast<std::int32_t>(currX),
                   static_cast<std::int32_t>(currY));
-      std::this_thread::sleep_for(timeout);
+
+      std::this_thread::sleep_for(iterTimeout);
     }
 
     SetPosition(destX, destY);
@@ -123,12 +118,12 @@ namespace real_mouse
 
     constexpr double windMag              = 1;  // ћагнитуда случайных колебаний
     constexpr double gravity              = 1.5;  // ћагнитуда гравитации
-    constexpr std::int32_t dampDistance   = 50; // ƒистанци€, на которой случайные колебани€ прекращаютс€
+    constexpr std::int32_t dampDistance   = 20; // ƒистанци€, на которой случайные колебани€ прекращаютс€
     constexpr std::int32_t maxProjection  = 2;  // ћаксимальное значение проекции вектора перемещени€
 
     auto [currentX, currentY]  = GetPosition();
     auto remainDist            = std::hypot(destX - currentX, destY - currentY);
-    std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>(remainDist / (velocity * remainDist) * 1000000) };
+    std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000)};
 
     auto windForce = [sqrt3=sqrt3, sqrt5=sqrt5, windMag=windMag, damp=dampDistance](double dist, double prevX = 0, double prevY = 0)
                        -> std::pair<double, double>
@@ -204,7 +199,7 @@ namespace real_mouse
       }
 #endif
 
-      Move(currentX + static_cast<std::int32_t>(stepX), currentY + static_cast<std::int32_t>(stepY));
+      Move(currentX + static_cast<std::int32_t>(stepX), currentY + static_cast<std::int32_t>(stepY), velocity);
 
       double _ = 0;
       stepX = std::modf(stepX, &_);
@@ -218,7 +213,7 @@ namespace real_mouse
       std::this_thread::sleep_for(iterTimeout);
     }
 
-    Move(destX, destY);
+    Move(destX, destY, velocity);
   }
 
   void Mouse::SetPosition(std::int32_t x, std::int32_t y)
