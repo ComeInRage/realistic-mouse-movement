@@ -48,7 +48,7 @@ namespace real_mouse
 
     m_isClicking = true;
 
-    auto t = std::thread([this, button, clickDuration]() // all objects are cheap-to-copy
+    auto t = std::thread([this, button, clickDuration]()
                          {
                            PushDown();
                            thr::sleep_for(clickDuration);
@@ -62,7 +62,7 @@ namespace real_mouse
   {
     namespace ch = std::chrono;
 
-    std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) }; // amount of time spend to one pixel in nanoseconds
+    std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) };
 
     auto [startX, startY] = GetPosition();
     auto xDist = destX - startX;
@@ -111,15 +111,15 @@ namespace real_mouse
 
   void Mouse::RealisticMove(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
   {
-    // Сделать ремарку о вдохновлении Wind Mouse
-    // Сделать возможность конфигурирования
-    static const double sqrt3             = std::sqrt(3); // Темп затухания скорости
-    static const double sqrt5             = std::sqrt(5); // Ограничение нарастания скорости
+    // The algorithm was written under inspiration from WindMouse
+    // https://ben.land/post/2021/04/25/windmouse-human-mouse-movement/
+    static const double sqrt3             = std::sqrt(3); // Result force damping coefficient
+    static const double sqrt5             = std::sqrt(5); // Velocity rising limit decreasing coefficient
 
-    constexpr double windMag              = 1;  // Магнитуда случайных колебаний
-    constexpr double gravity              = 1.5;  // Магнитуда гравитации
-    constexpr std::int32_t dampDistance   = 20; // Дистанция, на которой случайные колебания прекращаются
-    constexpr std::int32_t maxProjection  = 2;  // Максимальное значение проекции вектора перемещения
+    constexpr double windMag              = 1;    // Random fluctuations magnitude
+    constexpr double gravity              = 1.5;  // Gravity force coefficient
+    constexpr std::int32_t dampDistance   = 20;   // Random fluctuations damping distance
+    constexpr std::int32_t maxProjection  = 2;    // Maximum result force projection value
 
     auto [currentX, currentY]  = GetPosition();
     auto remainDist            = std::hypot(destX - currentX, destY - currentY);
@@ -133,11 +133,11 @@ namespace real_mouse
                        std::mt19937 mt{ rd() };
                        std::uniform_real_distribution distribution{-1., 1.};
 
-                       // Затухание происходит в любом случае
+                       // Damping result force projections
                        double x = prevX / sqrt3;
                        double y = prevY / sqrt3;
 
-                       // Если дистанция больше, чем дистанция затухания, то случайным образом меняем отклонение
+                       // Don't apply random fluctuations if distance is lesser than damp distance
                        if (dist > damp)
                        {
                          x += distribution(mt) * mag / sqrt5;
