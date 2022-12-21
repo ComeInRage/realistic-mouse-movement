@@ -54,26 +54,74 @@ namespace real_mouse
     // Note that, unlike Move(....), this function instantly sets coordinates.
     void   SetPosition(std::int32_t x, std::int32_t y);
 
+    Mouse& WaitForClick() const;
+
     // TODO for multithreading
     //void   WaitForMove() const;
+
+    //// Observers
+
+    bool   IsClicking() const noexcept;
 
   private:
     Mouse() = default;
 
-    enum class NearestPixel : std::int8_t
+    // Class that incapsulates work with std::condition_variable.
+    // Can be transferred out of class.
+    struct SyncPrimitive
     {
-      NO_ONE      = 0,
-      TOP         = 1,
-      TOP_RIGHT   = 2,
-      RIGHT       = 3,
-      LOWER_RIGHT = 4,
-      LOWER       = 5,
-      LOWER_LEFT  = 6,
-      LEFT        = 7,
-      TOP_LEFT    = 8
+    public:
+      [[maybe_unused]] inline SyncPrimitive& LockAndBlock()
+      {
+        std::unique_lock lock{ mutex };
+        locked = true;
+        condition.wait(lock, [this]() { return !locked; });
+        return *this;
+      }
+
+      [[maybe_unused]] inline SyncPrimitive& LockOrBlock()
+      {
+        std::unique_lock lock{ mutex };
+        if (locked)
+        {
+          condition.wait(lock, [this](){ return !locked; });
+        }
+        else
+        {
+          locked = true;
+        }
+        return *this;
+      }
+
+      [[maybe_unused]] inline SyncPrimitive& Unlock(bool notifyAll = false)
+      {
+        std::lock_guard guard{ mutex };
+        locked = false;
+
+        if (notifyAll)
+        {
+          condition.notify_all();
+        }
+        else
+        {
+          condition.notify_one();
+        }
+
+        return *this;
+      }
+
+      [[nodiscard]] inline bool IsLocked()
+      {
+        std::lock_guard guard{ mutex };
+        return locked;
+      }
+
+    private:
+      std::condition_variable condition{};
+      std::mutex              mutex{};
+      bool                    locked{ false };
     };
 
-    std::mutex m_clickMutex;
-    bool m_isClicking = false;
+    mutable SyncPrimitive m_clickPrimitive;
   };
 }

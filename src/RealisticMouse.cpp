@@ -39,21 +39,14 @@ namespace real_mouse
   {
     namespace thr = std::this_thread;
 
-    std::lock_guard guard{ m_clickMutex };
-
-    if (m_isClicking)
-    {
-      return;
-    }
-
-    m_isClicking = true;
+    m_clickPrimitive.LockOrBlock();
 
     auto t = std::thread([this, button, clickDuration]()
                          {
-                           PushDown();
+                           PushDown(button);
                            thr::sleep_for(clickDuration);
-                           PushUp();
-                           m_isClicking = false;
+                           PushUp(button);
+                           m_clickPrimitive.Unlock();
                          });
     t.detach();
   }
@@ -221,8 +214,18 @@ namespace real_mouse
     SetCursorPos(x, y);
   }
 
+  Mouse& Mouse::WaitForClick() const
+  {
+    m_clickPrimitive.LockAndBlock();
+  }
+
   //void Mouse::WaitForMove() const
   //{
   //  
   //}
+
+  bool Mouse::IsClicking() const noexcept
+  {
+    return m_clickPrimitive.IsLocked();
+  }
 }
