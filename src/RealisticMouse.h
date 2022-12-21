@@ -34,34 +34,34 @@ namespace real_mouse
 
     // Simulates mouse click on current coordinates.
     // Takes the mouse button and the time during which mouse button will be pressed.
-    void   Click(Buttons button = Buttons::LEFT, std::chrono::milliseconds clickDuration = 100ms);
+    void              Click(Buttons button = Buttons::LEFT, std::chrono::milliseconds clickDuration = 100ms);
 
     // Moves mouse to given coordinates.
     // Note that, unlike SetPosition(....), this function moves mouse smoothly.
-    void   Move(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
+    void              Move(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
     // Pushes down given mouse button and holds one in pressed state.
-    void   PushDown(Buttons button = Buttons::LEFT);
+    void              PushDown(Buttons button = Buttons::LEFT);
 
     // Pushes up given mouse button and holds one in unpressed state.
-    void   PushUp(Buttons button = Buttons::LEFT);
+    void              PushUp(Buttons button = Buttons::LEFT);
 
     // Moves mouse to given coordinates.
     // Note that, unlike SetPosition(....), this function moves mouse smoothly.
-    void   RealisticMove(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
+    void              RealisticMove(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
     // Sets mouse coordinates to given ones.
     // Note that, unlike Move(....), this function instantly sets coordinates.
-    void   SetPosition(std::int32_t x, std::int32_t y);
+    void              SetPosition(std::int32_t x, std::int32_t y);
 
-    Mouse& WaitForClick() const;
+    const Mouse&      WaitForClick() const;
 
     // TODO for multithreading
     //void   WaitForMove() const;
 
     //// Observers
 
-    bool   IsClicking() const noexcept;
+    bool              IsClicking() const noexcept;
 
   private:
     Mouse() = default;
@@ -94,7 +94,7 @@ namespace real_mouse
         return *this;
       }
 
-      [[maybe_unused]] inline SyncPrimitive& Unlock(bool notifyAll = false)
+      [[maybe_unused]] inline SyncPrimitive& Unlock(bool notifyAll = true)
       {
         std::lock_guard guard{ mutex };
         locked = false;

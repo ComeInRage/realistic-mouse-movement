@@ -214,9 +214,10 @@ namespace real_mouse
     SetCursorPos(x, y);
   }
 
-  Mouse& Mouse::WaitForClick() const
+  const Mouse& Mouse::WaitForClick() const
   {
     m_clickPrimitive.LockAndBlock();
+    return *this;
   }
 
   //void Mouse::WaitForMove() const
