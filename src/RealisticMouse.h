@@ -66,7 +66,8 @@ namespace real_mouse
   private:
     Mouse() = default;
 
-    // Class that incapsulates work with std::condition_variable.
+    // This primitive incapsulates the logic of working with std::condition_variable.
+    // All methods are thread-safe.
     // Can be transferred out of class.
     struct SyncPrimitive
     {
