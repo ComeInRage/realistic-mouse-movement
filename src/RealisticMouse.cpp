@@ -39,6 +39,8 @@ namespace real_mouse
   {
     namespace thr = std::this_thread;
 
+    ScopeBlockerGuard guard{ m_clickPrimitive };
+
     auto t = std::thread([this, button, clickDuration]()
                          {
                            m_clickPrimitive.LockOrBlock();
