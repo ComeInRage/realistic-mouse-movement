@@ -82,10 +82,10 @@ namespace real_mouse
       return *this;
     }
 
-    [[nodiscard]] inline bool IsLocked()
+    [[nodiscard]] inline bool IsAnyLocked()
     {
       std::lock_guard guard{ mutex };
-      return locked;
+      return locksCount;
     }
 
   private:

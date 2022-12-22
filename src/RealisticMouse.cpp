@@ -121,12 +121,12 @@ namespace real_mouse
 
   bool Mouse::IsClicking() const
   {
-    return m_clickPrimitive.IsLocked();
+    return m_clickPrimitive.IsAnyLocked();
   }
 
   bool Mouse::IsMoving() const
   {
-    return m_movePrimitive.IsLocked();
+    return m_movePrimitive.IsAnyLocked();
   }
 
   void Mouse::MoveImpl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
