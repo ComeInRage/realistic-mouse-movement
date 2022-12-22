@@ -134,30 +134,25 @@ namespace real_mouse
     std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) };
 
     auto [startX, startY] = GetPosition();
-    auto remainDistX      = destX - startX;
-    auto remainDistY      = destY - startY;
-    auto remainDistance   = std::hypot(remainDistX, remainDistY);
+    auto xDist = destX - startX;
+    auto yDist = destY - startY;
+    auto remainDistance = std::hypot(xDist, yDist);
 
-    double remainToNextX  = 0.;
-    double remainToNextY  = 0.;
+    auto distPerCycleX = std::min((destX - startX) / remainDistance, 1.);
+    auto distPerCycleY = std::min((destY - startY) / remainDistance, 1.);
+
+    double currX = startX;
+    double currY = startY;
 
     while (remainDistance > 1)
     {
-      auto nextPosX = 0.;
-      auto nextPosY = 0.;
-      auto [currX, currY] = GetPosition();
-      remainDistX = destX - currX;
-      remainDistY = destY - currY;
-      remainDistance = std::hypot(remainDistX, remainDistY);
+      currX += distPerCycleX;
+      currY += distPerCycleY;
 
-      auto distPerCycleX = std::min(remainDistX / remainDistance, 1.);
-      auto distPerCycleY = std::min(remainDistY / remainDistance, 1.);
+      remainDistance = std::hypot(destX - currX, destY - currY);
 
-      remainToNextX = std::modf(currX + distPerCycleX + remainToNextX, &nextPosX);
-      remainToNextY = std::modf(currY + distPerCycleY + remainToNextY, &nextPosY);
-
-      SetPosition(static_cast<std::int32_t>(nextPosX),
-                  static_cast<std::int32_t>(nextPosY));
+      SetPosition(static_cast<std::int32_t>(currX),
+        static_cast<std::int32_t>(currY));
 
       std::this_thread::sleep_for(iterTimeout);
     }
@@ -167,50 +162,51 @@ namespace real_mouse
 
   void Mouse::RealisticMoveImpl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
   {
-    // The algorithm was written under inspiration from WindMouse
+    // The algorithm was inspired by WindMouse
     // https://ben.land/post/2021/04/25/windmouse-human-mouse-movement/
-    static const double sqrt3 = std::sqrt(3); // Result force damping coefficient
-    static const double sqrt5 = std::sqrt(5); // Velocity rising limit decreasing coefficient
 
-    constexpr double windMag = 1;    // Random fluctuations magnitude
-    constexpr double gravity = 1.5;  // Gravity force coefficient
+    static const double sqrt3 = std::sqrt(3);   // Result force damping coefficient
+    static const double sqrt5 = std::sqrt(5);   // Velocity rising limit decreasing coefficient
+
+    constexpr double windMag = 1;               // Random fluctuations magnitude
+    constexpr double gravity = 2;             // Gravity force coefficient
     constexpr std::int32_t dampDistance = 20;   // Random fluctuations damping distance
-    constexpr std::int32_t maxProjection = 2;    // Maximum result force projection value
+    constexpr std::int32_t maxProjection = 2;   // Maximum result force projection value
 
     auto [currentX, currentY] = GetPosition();
     auto remainDist = std::hypot(destX - currentX, destY - currentY);
     std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) };
 
-    auto windForce = [sqrt3 = sqrt3, sqrt5 = sqrt5, windMag = windMag, damp = dampDistance](double dist, double prevX = 0, double prevY = 0)
-      -> std::pair<double, double>
-    {
-      auto mag = std::min(windMag, dist);
-      std::random_device rd{};
-      std::mt19937 mt{ rd() };
-      std::uniform_real_distribution distribution{ -1., 1. };
+    auto windForce = [sqrt3=sqrt3, sqrt5=sqrt5, windMag=windMag, damp=dampDistance](double dist, double prevX = 0, double prevY = 0)
+                       -> std::pair<double, double>
+                     {
+                       auto mag = std::min(windMag, dist);
+                       std::random_device rd{};
+                       std::mt19937 mt{ rd() };
+                       std::uniform_real_distribution distribution{ -1., 1. };
+                     
+                       // Damping result force projections
+                       double x = prevX / sqrt3;
+                       double y = prevY / sqrt3;
+                     
+                       // Don't apply random fluctuations if distance is lesser than damp distance
+                       if (dist > damp)
+                       {
+                         x += distribution(mt) * mag / sqrt5;
+                         y += distribution(mt) * mag / sqrt5;
+                       }
+                       return { x, y };
+                     };
 
-      // Damping result force projections
-      double x = prevX / sqrt3;
-      double y = prevY / sqrt3;
-
-      // Don't apply random fluctuations if distance is lesser than damp distance
-      if (dist > damp)
-      {
-        x += distribution(mt) * mag / sqrt5;
-        y += distribution(mt) * mag / sqrt5;
-      }
-      return { x, y };
-    };
-
-    auto gravityForce = [g = gravity, destX = destX, destY = destY](double dist, std::int32_t currX, std::int32_t currY)
-      -> std::pair<double, double>
-    {
-      auto gravityVecX = (destX - currX) / dist;
-      auto gravityVecY = (destY - currY) / dist;
-      double x = g * gravityVecX;
-      double y = g * gravityVecY;
-      return { x, y };
-    };
+    auto gravityForce = [g=gravity, destX=destX, destY=destY](double dist, std::int32_t currX, std::int32_t currY)
+                          -> std::pair<double, double>
+                        {
+                          auto gravityVecX = (destX - currX) / dist;
+                          auto gravityVecY = (destY - currY) / dist;
+                          double x = g * gravityVecX;
+                          double y = g * gravityVecY;
+                          return { x, y };
+                        };
 
     double currStepX = 0;
     double currStepY = 0;

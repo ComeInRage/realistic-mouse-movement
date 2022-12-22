@@ -172,41 +172,6 @@ namespace real_mouse
 
     [[nodiscard]]    bool              IsMoving() const;
 
-    Mouse& Test()
-    {
-      ScopeBlockerGuard guard { m_testPrimitive };
-
-      auto out = [this](size_t tnum)
-                 {
-                   m_testPrimitive.LockOrBlock();
-                   for (size_t i = 0; i < 10; ++i)
-                   {
-                     std::cout << "Thread " << tnum << ": " << i << std::endl;
-                   }
-                   m_testPrimitive.Unlock(true);
-                 };
-
-      auto t1 = std::thread{ out, 1 };
-      auto t2 = std::thread{ out, 2 };
-      auto t3 = std::thread{ out, 3 };
-      auto t4 = std::thread{ out, 4 };
-      auto t5 = std::thread{ out, 5 };
-
-      t1.detach();
-      t2.detach();
-      t3.detach();
-      t4.detach();
-      t5.detach();
-      
-      return *this;
-    }
-
-    const Mouse& WaitForTest() const
-    {
-      m_testPrimitive.BlockUntilUnlockAll();
-      return *this;
-    }
-
   private:
     Mouse() = default;
 
@@ -215,6 +180,5 @@ namespace real_mouse
 
     mutable SyncPrimitive m_clickPrimitive;
     mutable SyncPrimitive m_movePrimitive; // This primitive is used by all versions of Move methods. Including RealisticMove
-    mutable SyncPrimitive m_testPrimitive;
   };
 }
