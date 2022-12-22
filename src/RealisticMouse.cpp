@@ -19,7 +19,7 @@
 
 namespace real_mouse
 {
-  Mouse& Mouse::Init() noexcept
+  Mouse& Mouse::Init()
   {
     static Mouse mouse{};
     return mouse;
@@ -35,7 +35,7 @@ namespace real_mouse
     return { pos.x, pos.y };
   }
 
-  void Mouse::Click(Buttons button/* = Buttons::LEFT*/, std::chrono::milliseconds clickDuration/* = 100ms*/)
+  Mouse& Mouse::Click(Buttons button/* = Buttons::LEFT*/, std::chrono::milliseconds clickDuration/* = 100ms*/)
   {
     namespace thr = std::this_thread;
 
@@ -45,37 +45,119 @@ namespace real_mouse
                            PushDown(button);
                            thr::sleep_for(clickDuration);
                            PushUp(button);
-                           m_clickPrimitive.Unlock(false);
+                           m_clickPrimitive.Unlock(true); // I have to notify all waiting threads i think...
                          });
     t.detach();
+    return *this;
   }
 
-  void Mouse::Move(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
+  Mouse& Mouse::Move(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
+  {
+    ScopeBlockerGuard guard{ m_movePrimitive };
+
+    auto t = std::thread([this, x, y, velocity]()
+                         {
+                           m_movePrimitive.LockOrBlock();
+                           MoveImpl(x, y, velocity);
+                           m_movePrimitive.Unlock(true);
+                         });
+    t.detach();
+    return *this;
+  }
+
+  Mouse& Mouse::PushDown(Buttons button/* = Buttons::LEFT*/)
+  {
+    auto [x, y] = GetPosition();
+    DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_RIGHTDOWN);
+    MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
+    INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
+    SendInput(1, &input, sizeof(input));
+    return *this;
+  }
+
+  Mouse& Mouse::PushUp(Buttons button/* = Buttons::LEFT*/)
+  {
+    auto [x, y] = GetPosition();
+    DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP);
+    MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
+    INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
+    SendInput(1, &input, sizeof(input));
+    return *this;
+  }
+
+  Mouse& Mouse::RealisticMove(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
+  {
+    ScopeBlockerGuard guard{ m_movePrimitive };
+
+    auto t = std::thread([this, x, y, velocity]()
+                         {
+                           m_movePrimitive.LockOrBlock();
+                           RealisticMoveImpl(x, y, velocity);
+                           m_movePrimitive.Unlock(true);
+                         });
+    t.detach();
+    return *this;
+  }
+
+  Mouse& Mouse::SetPosition(std::int32_t x, std::int32_t y)
+  {
+    SetCursorPos(x, y);
+    return *this;
+  }
+
+  const Mouse& Mouse::WaitForClick() const
+  {
+    m_clickPrimitive.BlockUntilUnlockAll();
+    return *this;
+  }
+
+  const Mouse& Mouse::WaitForMove() const
+  {
+    m_movePrimitive.BlockUntilUnlockAll();
+    return *this;
+  }
+
+  bool Mouse::IsClicking() const
+  {
+    return m_clickPrimitive.IsLocked();
+  }
+
+  bool Mouse::IsMoving() const
+  {
+    return m_movePrimitive.IsLocked();
+  }
+
+  void Mouse::MoveImpl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
   {
     namespace ch = std::chrono;
 
     std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) };
 
     auto [startX, startY] = GetPosition();
-    auto xDist = destX - startX;
-    auto yDist = destY - startY;
-    auto remainDistance = std::hypot(xDist, yDist);
+    auto remainDistX      = destX - startX;
+    auto remainDistY      = destY - startY;
+    auto remainDistance   = std::hypot(remainDistX, remainDistY);
 
-    auto distPerCycleX = std::min((destX - startX) / remainDistance, 1.);
-    auto distPerCycleY = std::min((destY - startY) / remainDistance, 1.);
+    double remainToNextX  = 0.;
+    double remainToNextY  = 0.;
 
-    double currX = startX;
-    double currY = startY;
-    
     while (remainDistance > 1)
     {
-      currX += distPerCycleX;
-      currY += distPerCycleY;
+      auto nextPosX = 0.;
+      auto nextPosY = 0.;
+      auto [currX, currY] = GetPosition();
+      remainDistX = destX - currX;
+      remainDistY = destY - currY;
+      remainDistance = std::hypot(remainDistX, remainDistY);
 
-      remainDistance = std::hypot(destX - currX, destY - currY);
+      auto distPerCycleX = std::min(remainDistX / remainDistance, 1.);
+      auto distPerCycleY = std::min(remainDistY / remainDistance, 1.);
 
-      SetPosition(static_cast<std::int32_t>(currX),
-                  static_cast<std::int32_t>(currY));
+      remainToNextX = std::modf(currX + distPerCycleX + remainToNextX, &nextPosX);
+      remainToNextY = std::modf(currY + distPerCycleY + remainToNextY, &nextPosY);
+
+      SetPosition(static_cast<std::int32_t>(nextPosX),
+                  static_cast<std::int32_t>(nextPosY));
 
       std::this_thread::sleep_for(iterTimeout);
     }
@@ -83,79 +165,61 @@ namespace real_mouse
     SetPosition(destX, destY);
   }
 
-  void Mouse::PushDown(Buttons button/* = Buttons::LEFT*/)
-  {
-    auto [x, y] = GetPosition();
-    DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_RIGHTDOWN);
-    MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
-    INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
-    SendInput(1, &input, sizeof(input));
-  }
-
-  void Mouse::PushUp(Buttons button/* = Buttons::LEFT*/)
-  {
-    auto [x, y] = GetPosition();
-    DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP);
-    MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
-    INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
-    SendInput(1, &input, sizeof(input));
-  }
-
-  void Mouse::RealisticMove(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
+  void Mouse::RealisticMoveImpl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
   {
     // The algorithm was written under inspiration from WindMouse
     // https://ben.land/post/2021/04/25/windmouse-human-mouse-movement/
-    static const double sqrt3             = std::sqrt(3); // Result force damping coefficient
-    static const double sqrt5             = std::sqrt(5); // Velocity rising limit decreasing coefficient
+    static const double sqrt3 = std::sqrt(3); // Result force damping coefficient
+    static const double sqrt5 = std::sqrt(5); // Velocity rising limit decreasing coefficient
 
-    constexpr double windMag              = 1;    // Random fluctuations magnitude
-    constexpr double gravity              = 1.5;  // Gravity force coefficient
-    constexpr std::int32_t dampDistance   = 20;   // Random fluctuations damping distance
-    constexpr std::int32_t maxProjection  = 2;    // Maximum result force projection value
+    constexpr double windMag = 1;    // Random fluctuations magnitude
+    constexpr double gravity = 1.5;  // Gravity force coefficient
+    constexpr std::int32_t dampDistance = 20;   // Random fluctuations damping distance
+    constexpr std::int32_t maxProjection = 2;    // Maximum result force projection value
 
-    auto [currentX, currentY]  = GetPosition();
-    auto remainDist            = std::hypot(destX - currentX, destY - currentY);
-    std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000)};
+    auto [currentX, currentY] = GetPosition();
+    auto remainDist = std::hypot(destX - currentX, destY - currentY);
+    std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) };
 
-    auto windForce = [sqrt3=sqrt3, sqrt5=sqrt5, windMag=windMag, damp=dampDistance](double dist, double prevX = 0, double prevY = 0)
-                       -> std::pair<double, double>
-                     {
-                       auto mag = std::min(windMag, dist);
-                       std::random_device rd{};
-                       std::mt19937 mt{ rd() };
-                       std::uniform_real_distribution distribution{-1., 1.};
+    auto windForce = [sqrt3 = sqrt3, sqrt5 = sqrt5, windMag = windMag, damp = dampDistance](double dist, double prevX = 0, double prevY = 0)
+      -> std::pair<double, double>
+    {
+      auto mag = std::min(windMag, dist);
+      std::random_device rd{};
+      std::mt19937 mt{ rd() };
+      std::uniform_real_distribution distribution{ -1., 1. };
 
-                       // Damping result force projections
-                       double x = prevX / sqrt3;
-                       double y = prevY / sqrt3;
+      // Damping result force projections
+      double x = prevX / sqrt3;
+      double y = prevY / sqrt3;
 
-                       // Don't apply random fluctuations if distance is lesser than damp distance
-                       if (dist > damp)
-                       {
-                         x += distribution(mt) * mag / sqrt5;
-                         y += distribution(mt) * mag / sqrt5;
-                       }
-                       return { x, y };
-                     };
+      // Don't apply random fluctuations if distance is lesser than damp distance
+      if (dist > damp)
+      {
+        x += distribution(mt) * mag / sqrt5;
+        y += distribution(mt) * mag / sqrt5;
+      }
+      return { x, y };
+    };
 
-    auto gravityForce = [g=gravity, destX=destX, destY=destY](double dist, std::int32_t currX, std::int32_t currY)
-                          -> std::pair<double, double>
-                        {
-                          auto gravityVecX = (destX - currX) / dist;
-                          auto gravityVecY = (destY - currY) / dist;
-                          double x         = g * gravityVecX;
-                          double y         = g * gravityVecY;
-                          return { x, y };
-                        };
+    auto gravityForce = [g = gravity, destX = destX, destY = destY](double dist, std::int32_t currX, std::int32_t currY)
+      -> std::pair<double, double>
+    {
+      auto gravityVecX = (destX - currX) / dist;
+      auto gravityVecY = (destY - currY) / dist;
+      double x = g * gravityVecX;
+      double y = g * gravityVecY;
+      return { x, y };
+    };
 
     double currStepX = 0;
     double currStepY = 0;
-    double wX        = 0;
-    double wY        = 0;
-    double gX        = 0;
-    double gY        = 0;
-    double stepX     = 0;
-    double stepY     = 0;
+    double wX = 0;
+    double wY = 0;
+    double gX = 0;
+    double gY = 0;
+    double stepX = 0;
+    double stepY = 0;
 
     while (remainDist > 1)
     {
@@ -173,8 +237,8 @@ namespace real_mouse
       if (stepX > maxProjection || stepX < -maxProjection)
       {
         auto ratio = std::abs(maxProjection / stepX);
-        stepX      = stepX * ratio;
-        stepY      = stepY * ratio;
+        stepX = stepX * ratio;
+        stepY = stepY * ratio;
       }
       if (stepY > maxProjection || stepY < -maxProjection)
       {
@@ -184,48 +248,29 @@ namespace real_mouse
       }
 
 #ifndef NDEBUG
-      if (   stepX > maxProjection || stepX < -maxProjection
-          || stepY > maxProjection || stepY < -maxProjection)
+      if (stepX > maxProjection || stepX < -maxProjection
+        || stepY > maxProjection || stepY < -maxProjection)
       {
         throw std::runtime_error("Too long step");
       }
 #endif
 
-      Move(currentX + static_cast<std::int32_t>(stepX), currentY + static_cast<std::int32_t>(stepY), velocity);
+      MoveImpl(currentX + static_cast<std::int32_t>(stepX), 
+               currentY + static_cast<std::int32_t>(stepY), 
+               velocity);
 
       double _ = 0;
       stepX = std::modf(stepX, &_);
       stepY = std::modf(stepY, &_);
 
       auto [currX, currY] = GetPosition();
-      currentX   = currX;
-      currentY   = currY;
+      currentX = currX;
+      currentY = currY;
       remainDist = std::hypot(destX - currentX, destY - currentY);
 
       std::this_thread::sleep_for(iterTimeout);
     }
 
-    Move(destX, destY, velocity);
-  }
-
-  void Mouse::SetPosition(std::int32_t x, std::int32_t y)
-  {
-    SetCursorPos(x, y);
-  }
-
-  const Mouse& Mouse::WaitForClick() const
-  {
-    m_clickPrimitive.LockAndBlock();
-    return *this;
-  }
-
-  //void Mouse::WaitForMove() const
-  //{
-  //  
-  //}
-
-  bool Mouse::IsClicking() const noexcept
-  {
-    return m_clickPrimitive.IsLocked();
+    MoveImpl(destX, destY, velocity);
   }
 }
