@@ -94,7 +94,7 @@ namespace real_mouse
         return *this;
       }
 
-      [[maybe_unused]] inline SyncPrimitive& Unlock(bool notifyAll = true)
+      [[maybe_unused]] inline SyncPrimitive& Unlock(bool notifyAll)
       {
         std::lock_guard guard{ mutex };
         locked = false;

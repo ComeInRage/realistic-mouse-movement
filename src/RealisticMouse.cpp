@@ -39,14 +39,13 @@ namespace real_mouse
   {
     namespace thr = std::this_thread;
 
-    m_clickPrimitive.LockOrBlock();
-
     auto t = std::thread([this, button, clickDuration]()
                          {
+                           m_clickPrimitive.LockOrBlock();
                            PushDown(button);
                            thr::sleep_for(clickDuration);
                            PushUp(button);
-                           m_clickPrimitive.Unlock();
+                           m_clickPrimitive.Unlock(false);
                          });
     t.detach();
   }
