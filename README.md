@@ -74,4 +74,4 @@ Other member functions:
 Observing methods:
 
 1. **IsClicking** - return true if any thread processing click operation (here is underlying operations counter). False otherwise.
-1. **IsAnyLocked** -  return true if any thread processing moving operation (include **RealisticMove** and similar). False otherwise.
+1. **IsMoving** -  return true if any thread processing moving operation (include **RealisticMove** and similar). False otherwise.
