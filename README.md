@@ -28,16 +28,16 @@ The answer: second (2) and last (5) lines. And yes, line numbers were drawn in P
 
 ![image](https://user-images.githubusercontent.com/74464036/209235824-cb842775-8457-4886-85c0-6ed39006644a.png)
 
-### Different modes
+### Fluent interface
 
-**Mouse** object provides all necessary tools not only for emulate the user's work with the mouse, but also for mouse controlling in general. Library provides convenient interface to WinAPI-ways to control mouse:
+**Mouse** object provides all necessary tools not only for emulate the user's work with the mouse, but also for mouse controlling in general. Library provides convenient fluent interface, instead of WinAPI-ways to control mouse:
 
 ```cpp
 namespace rm = real_mouse;
 // ....
 auto &mouse = rm::Mouse::Init();
-mouse.PushDown()
-     .SetPosition(x, y)
+mouse.SetPosition(x, y)
+     .PushDown()
      .Move(x2, y2)
      .PushUp()
      .WaitForMove();
@@ -46,6 +46,30 @@ mouse.PushDown()
 ### Multithreading
 
 Library is planned as multithreaded. At the moment, there are only several such methods (check documentation below).
+
+Most of multithreaded methods are non-blocking asynchronous functions. For example, if you calls **RealisticMove** in the code below, mouse will move at the same time with output of cursor coordinates:
+
+```cpp
+auto &mouse = rm::Mouse::Init();
+mouse.RealisticMove(x, y, movingVelocity);
+while(mouse.IsMoving())
+{
+    auto [currX, currY] = mouse.GetPosition();
+    std::cout << currX << " " << currY << std::endl;
+}
+```
+
+Unfortunately, during every asynchronous function call it creates new std::thread for now. Also there is no order of execution of asynchronous functions. Execution order of **Move** methods is undefined in code below:
+
+```cpp
+auto &mouse = rm::Mouse::Init();
+mouse.RealisticMove(x, y)
+     .RealisticMove(x2, y2)
+     .RealisticMove(x3, y3)
+     .WaitForMove();
+```
+
+It will be fixed and improved over time.
 
 ### Documentation
 
