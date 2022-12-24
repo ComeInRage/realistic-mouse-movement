@@ -113,10 +113,20 @@ namespace real_mouse
     return *this;
   }
 
+  Mouse& Mouse::WaitForClick()
+  {
+    return const_cast<Mouse&>(const_cast<const Mouse&>(*this).WaitForClick());
+  }
+
   const Mouse& Mouse::WaitForMove() const
   {
     m_movePrimitive.BlockUntilUnlockAll();
     return *this;
+  }
+
+  Mouse& Mouse::WaitForMove()
+  {
+    return const_cast<Mouse&>(const_cast<const Mouse&>(*this).WaitForMove());
   }
 
   bool Mouse::IsClicking() const

@@ -160,11 +160,17 @@ namespace real_mouse
     // Note that, unlike Move(....), this function instantly sets coordinates.
     [[maybe_unused]] Mouse&            SetPosition(std::int32_t x, std::int32_t y);
 
-    // TODO Description
+    // Blocks calling thread, until all Click() operations become finished.
     [[maybe_unused]] const Mouse&      WaitForClick() const;
+    // Blocks calling thread, until all Click() operations become finished.
+    // Non-const version. Do the same as WaitForClick const.
+    [[maybe_unused]] Mouse&            WaitForClick();
 
-    // TODO description
+    // Blocks calling thread, until all moving operations become finished.
     [[maybe_unused]] const Mouse&      WaitForMove() const;
+    // Blocks calling thread, until all moving operations become finished.
+    // Non-const version. Do the same as WaitForClick const.
+    [[maybe_unused]] Mouse&            WaitForMove();
 
     //// Observers
 
