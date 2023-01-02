@@ -35,35 +35,23 @@ namespace real_mouse
     return { pos.x, pos.y };
   }
 
-  Mouse& Mouse::Click(Buttons button/* = Buttons::LEFT*/, std::chrono::milliseconds clickDuration/* = 100ms*/)
+  Mouse& Mouse::Click(std::chrono::milliseconds clickDuration/* = 100ms*/, Buttons button/* = Buttons::LEFT*/)
   {
     namespace thr = std::this_thread;
 
-    ScopeBlockerGuard guard{ m_clickPrimitive };
+    m_clickingTasks.AddTask([this, button, clickDuration]()
+                            {
+                              PushDown(button);
+                              thr::sleep_for(clickDuration);
+                              PushUp(button);
+                            });
 
-    auto t = std::thread([this, button, clickDuration]()
-                         {
-                           m_clickPrimitive.LockOrBlock();
-                           PushDown(button);
-                           thr::sleep_for(clickDuration);
-                           PushUp(button);
-                           m_clickPrimitive.Unlock(true); // I have to notify all waiting threads i think...
-                         });
-    t.detach();
     return *this;
   }
 
   Mouse& Mouse::Move(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
   {
-    ScopeBlockerGuard guard{ m_movePrimitive };
-
-    auto t = std::thread([this, x, y, velocity]()
-                         {
-                           m_movePrimitive.LockOrBlock();
-                           MoveImpl(x, y, velocity);
-                           m_movePrimitive.Unlock(true);
-                         });
-    t.detach();
+    m_movingTasks.AddTask(&Mouse::MoveImpl, this, x, y, velocity);
     return *this;
   }
 
@@ -89,15 +77,7 @@ namespace real_mouse
 
   Mouse& Mouse::RealisticMove(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
   {
-    ScopeBlockerGuard guard{ m_movePrimitive };
-
-    auto t = std::thread([this, x, y, velocity]()
-                         {
-                           m_movePrimitive.LockOrBlock();
-                           RealisticMoveImpl(x, y, velocity);
-                           m_movePrimitive.Unlock(true);
-                         });
-    t.detach();
+    m_movingTasks.AddTask(&Mouse::RealisticMoveImpl, this, x, y, velocity);
     return *this;
   }
 
@@ -109,7 +89,7 @@ namespace real_mouse
 
   const Mouse& Mouse::WaitForClick() const
   {
-    m_clickPrimitive.BlockUntilUnlockAll();
+    m_clickingTasks.WaitAll();
     return *this;
   }
 
@@ -120,7 +100,7 @@ namespace real_mouse
 
   const Mouse& Mouse::WaitForMove() const
   {
-    m_movePrimitive.BlockUntilUnlockAll();
+    m_movingTasks.WaitAll();
     return *this;
   }
 
@@ -131,12 +111,12 @@ namespace real_mouse
 
   bool Mouse::IsClicking() const
   {
-    return m_clickPrimitive.IsAnyLocked();
+    return m_clickingTasks.IsBusy();
   }
 
   bool Mouse::IsMoving() const
   {
-    return m_movePrimitive.IsAnyLocked();
+    return m_movingTasks.IsBusy();
   }
 
   void Mouse::MoveImpl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)

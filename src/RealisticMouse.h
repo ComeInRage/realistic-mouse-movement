@@ -3,115 +3,154 @@
 #include <chrono>
 #include <mutex>
 #include <iostream>
+#include <queue>
+#include <future>
 
 namespace real_mouse
 {
   using namespace std::chrono_literals;
 
-  // This primitive incapsulates the logic of working with std::condition_variable.
-  // For more information check methods descriptions.
-  // Be careful! It is undefined behavior, if any thread works with SyncPrimitive after it's destructor was called.
-  class SyncPrimitive
+  namespace utils
   {
-  public:
-    SyncPrimitive() = default;
-    SyncPrimitive(const SyncPrimitive&) = delete;
-    SyncPrimitive(SyncPrimitive&&) = delete;
-    SyncPrimitive& operator=(const SyncPrimitive&) = delete;
-    SyncPrimitive& operator=(SyncPrimitive&&) = delete;
-    ~SyncPrimitive() = default;
-
-    [[maybe_unused]] inline SyncPrimitive& BlockUntilLock()
+    class ThreadPool
     {
-      std::unique_lock lock{ mutex };
-      if (!locked)
+    private:
+      class Locker
       {
-        condition.wait(lock, [this]() { return locked; });
-      }
-      return *this;
-    }
+      public:
+        Locker()                         = default;
+        Locker(const Locker&)            = delete;
+        Locker(Locker&&)                 = default;
+        Locker& operator=(const Locker&) = delete;
+        Locker& operator=(Locker&&)      = default;
+        ~Locker()                        = default;
 
-    [[maybe_unused]] inline SyncPrimitive& BlockUntilUnlock()
-    {
-      std::unique_lock lock{ mutex };
-      if (locked)
-      {
-        condition.wait(lock, [this]() { return !locked; });
-      }
-      return *this;
-    }
+        [[maybe_unused]] Locker& Lock() noexcept
+        {
+          ++lockersCount;
+          return *this;
+        }
 
-    [[maybe_unused]] inline SyncPrimitive& BlockUntilUnlockAll()
-    {
-      std::unique_lock lock{ mutex };
-      if (locksCount)
-      {
-        condition.wait(lock, [this]() { return !locksCount; });
-      }
-      return *this;
-    }
+        [[maybe_unused]] Locker& Unlock() noexcept
+        {
+          if (lockersCount)
+          {
+            --lockersCount;
+          }
+          return *this;
+        }
 
-    [[maybe_unused]] inline SyncPrimitive& LockOrBlock()
-    {
-      std::unique_lock lock{ mutex };
-      ++locksCount;
-      if (locked)
-      {
-        condition.wait(lock, [this]() { return !locked; });
-      }
-      locked = true;
-      condition.notify_all();
-      return *this;
-    }
+        [[nodiscard]] bool IsLocked() const noexcept
+        {
+          return lockersCount;
+        }
 
-    [[maybe_unused]] inline SyncPrimitive& Unlock(bool notifyAll)
-    {
-      std::lock_guard guard{ mutex };
-      locked = false;
-      --locksCount;
+      private:
+        std::atomic<size_t> lockersCount = 0;
+      };
 
-      if (notifyAll)
+    public:
+      using Task = std::pair<size_t, std::future<void>>;
+
+      ThreadPool(size_t threadsCount, std::queue<Task> tasks = {})
+        : m_threads{}, m_tasksQueue{ std::move(tasks) }, m_newTaskWaiter{},
+        m_queueLock{}, m_terminate{ false }
       {
-        condition.notify_all();
-      }
-      else
-      {
-        condition.notify_one();
+        m_threads.reserve(threadsCount);
+        for (size_t i = 0; i < threadsCount; ++i)
+        {
+          m_threads.emplace_back(std::thread{ &ThreadPool::ProcessTasks, this });
+        }
       }
 
-      return *this;
-    }
+      ThreadPool() = delete;
+      ThreadPool(const ThreadPool&) = delete;
+      ThreadPool(ThreadPool&&) = delete;
+      ThreadPool& operator=(const ThreadPool&) = delete;
+      ThreadPool& operator=(ThreadPool&&) = delete;
 
-    [[nodiscard]] inline bool IsAnyLocked()
-    {
-      std::lock_guard guard{ mutex };
-      return locksCount;
-    }
+      ~ThreadPool()
+      {
+        Terminate();
+      }
 
-  private:
-    std::condition_variable condition{};
-    std::mutex              mutex{};
-    size_t                  locksCount{ 0 };
-    bool                    locked{ false };
-  };
+      template<typename Func, typename ...Args>
+        requires(std::is_invocable_v<Func, Args...>)
+      [[maybe_unused]] ThreadPool& AddTask(Func&& task, Args&& ...args)
+      {
+        std::lock_guard guard{ m_queueLock };
+        auto &&future = std::async(std::launch::deferred, std::forward<Func>(task),
+          std::forward<Args>(args)...);
+        m_tasksQueue.emplace(Task{ m_tasksQueue.size(), std::move(future) });
+        m_newTaskWaiter.notify_one();
 
-  // Blocks std::this_thread on exit out of scope, if underliyng SyncPrimitive is still unlocked.
-  // This allows you to make sure that at least one thread locked his underlying SyncPrimitive.
-  // Be careful! It is DEADLOCK, if no threads are available to lock ScopeBlockerGuard after it's destructor called.
-  class ScopeBlockerGuard
-  {
-  public:
-    ScopeBlockerGuard(SyncPrimitive &primitive) : m_primitive{ primitive } {}
-    ScopeBlockerGuard()                                    = delete;
-    ScopeBlockerGuard(const ScopeBlockerGuard&)            = delete;
-    ScopeBlockerGuard(ScopeBlockerGuard&&)                 = delete;
-    ScopeBlockerGuard& operator=(const ScopeBlockerGuard&) = delete;
-    ScopeBlockerGuard& operator=(ScopeBlockerGuard&&)      = delete;
-    ~ScopeBlockerGuard() { m_primitive.BlockUntilLock(); }
+        return *this;
+      }
 
-  private:
-    SyncPrimitive& m_primitive;
-  };
+      void Terminate()
+      {
+        m_terminate = true;
+        m_newTaskWaiter.notify_all();
+        for (auto &&thread : m_threads)
+        {
+          thread.join();
+        }
+      }
+
+      [[maybe_unused]] ThreadPool& WaitAll()
+      {
+        std::unique_lock lock{ m_queueLock };
+        m_endAllTasksWaiter.wait(lock, [this]()
+                                       {
+                                         return m_tasksQueue.empty() && !m_processLocker.IsLocked();
+                                       });
+        return *this;
+      }
+
+      [[nodiscard]] bool IsBusy() const
+      {
+        std::lock_guard guard{ m_queueLock };
+        return !m_tasksQueue.empty() || m_processLocker.IsLocked();
+      }
+
+    private:
+      void ProcessTasks()
+      {
+        while (true)
+        {
+          std::unique_lock lock{ m_queueLock };
+          m_processLocker.Unlock();
+          m_newTaskWaiter.wait(lock, [this]() { return !m_tasksQueue.empty() || m_terminate; });
+
+          if (m_tasksQueue.empty() && m_terminate)
+          {
+            break;
+          }
+
+          m_processLocker.Lock();
+          auto task = std::move(m_tasksQueue.front());
+          m_tasksQueue.pop();
+
+          lock.unlock();
+          task.second.wait(); // Process task in calling thread
+          lock.lock();
+
+          if (m_tasksQueue.empty())
+          {
+            m_endAllTasksWaiter.notify_all();
+          }
+        }
+      }
+
+      std::vector<std::thread>        m_threads;
+      std::queue<Task>                m_tasksQueue;
+      std::condition_variable         m_newTaskWaiter;
+      std::condition_variable         m_endAllTasksWaiter;
+      mutable std::mutex              m_queueLock;
+      std::atomic_bool                m_terminate;
+      Locker                          m_processLocker;
+    };
+  }
 
   // Class that represents the computer mouse.
   class Mouse
@@ -140,7 +179,7 @@ namespace real_mouse
 
     // Simulates mouse click on current coordinates.
     // Takes the mouse button and the time during which mouse button will be pressed.
-    [[maybe_unused]] Mouse&            Click(Buttons button = Buttons::LEFT, std::chrono::milliseconds clickDuration = 100ms);
+    [[maybe_unused]] Mouse&            Click(std::chrono::milliseconds clickDuration = 100ms, Buttons button = Buttons::LEFT);
 
     // Moves mouse to given coordinates.
     // Note that, unlike SetPosition(....), this function moves mouse smoothly.
@@ -174,17 +213,21 @@ namespace real_mouse
 
     //// Observers
 
-    [[nodiscard]]    bool              IsClicking() const;
+    // Returns true if any thread processing click operation (here is underlying operations counter). False otherwise.
+    [[nodiscard]] bool                 IsClicking() const;
 
-    [[nodiscard]]    bool              IsMoving() const;
+    //Returns true if any thread processing moving operation (include RealisticMove and similar). False otherwise.
+    [[nodiscard]] bool                 IsMoving() const;
 
   private:
-    Mouse() = default;
+    // Don't change threads count in ThreadPool inside Mouse class!
+    // It causes to undefined execution order of any operation.
+    Mouse() : m_movingTasks{ 1 }, m_clickingTasks{ 1 } {}
 
-    void              MoveImpl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
-    void              RealisticMoveImpl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
+    void MoveImpl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
+    void RealisticMoveImpl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
-    mutable SyncPrimitive m_clickPrimitive;
-    mutable SyncPrimitive m_movePrimitive; // This primitive is used by all versions of Move methods. Including RealisticMove
+    mutable utils::ThreadPool m_movingTasks;
+    mutable utils::ThreadPool m_clickingTasks;
   };
 }

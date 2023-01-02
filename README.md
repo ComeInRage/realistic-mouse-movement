@@ -18,7 +18,7 @@ This library allows you to emulate user's trajectory. For example, try to find o
 
 The answer: second (2) and last (5) lines. And yes, line numbers were drawn in Paint. Don't ask me why.
 
-> You could say, we already know all this, it’s better to tell why we need another library. There is already [Wind Mouse](https://ben.land/post/2021/04/25/windmouse-human-mouse-movement/) or [AntoinePassemiers's mouse](https://github.com/AntoinePassemiers/Realistic-Mouse). [SLAUC91's c++ mouse](https://github.com/SLAUC91/RealisticMouse) eventually. First of all, most of same libraries are written in another programming languages. Secondly, check ***Features*** chapter.
+> You could say, we already know all this, it’s better to tell why we need another library. There is already [Wind Mouse](https://ben.land/post/2021/04/25/windmouse-human-mouse-movement/) or [AntoinePassemiers's mouse](https://github.com/AntoinePassemiers/Realistic-Mouse). [SLAUC91's c++ mouse](https://github.com/SLAUC91/RealisticMouse) eventually. First of all, most of same libraries are written in another programming languages. ~~Secondly, check ***Features*** chapter~~ I wanted - I did.
 
 ## Features
 
@@ -59,17 +59,19 @@ while(mouse.IsMoving())
 }
 ```
 
-Unfortunately, during every asynchronous function call it creates new std::thread for now. Also there is no order of execution of asynchronous functions. Execution order of **Move** methods is undefined in code below:
+Every asynchronous function call doesn't create new std::thread. Also functions are executed in the order they are called. It is achieved using Thread Pool pattern:
 
 ```cpp
 auto &mouse = rm::Mouse::Init();
 mouse.RealisticMove(x, y)
-     .RealisticMove(x2, y2)
+     .Move(x2, y2)
      .RealisticMove(x3, y3)
      .WaitForMove();
 ```
 
-It will be fixed and improved over time.
+In the code above functions executed successively, but asynchronously (in distinct thread).
+
+There is different thread pools to different operations. For example, **Click** methods will be executed in parallel with **Move** operations.
 
 ### Documentation
 
@@ -80,9 +82,9 @@ Static member functions:
 
 Asynchronous methods:
 
-1. **Move** - non-blocking asynchronous. Mouse moves in distinct thread, control is returned to caller. If several operations are performed at the same time, then their sequence is not defined.
-1. **RealisticMove** - non-blocking asynchronous. Same as **Move**. If several operations are performed at the same time, then their sequence is not defined.
-1. **Click** - non-blocking asynchronous. Clicking time calculates in distinct thread, control is returned to caller. If several operations are performed at the same time, then their sequence is not defined.
+1. **Move** - non-blocking asynchronous. Mouse moves in distinct thread, control is returned to caller.
+1. **RealisticMove** - non-blocking asynchronous. Same as **Move**.
+1. **Click** - non-blocking asynchronous. Clicking time calculates in distinct thread, control is returned to caller.
 
 Since the methods above are non-blocking (*it means that internal logic executes in distinct thread and control returns to caller, once thread is created*), there are some synchronizing methods:
 
