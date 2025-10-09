@@ -2,8 +2,8 @@
 
 project(realistic-mouse-movement CXX)
 
-add_library(realistic-mouse-movement STATIC src/RealisticMouse.h
-                                            src/RealisticMouse.cpp
+add_library(realistic-mouse-movement STATIC RealisticMouse.h
+                                            RealisticMouse.cpp
 )
 
 target_include_directories  (realistic-mouse-movement PUBLIC src)
