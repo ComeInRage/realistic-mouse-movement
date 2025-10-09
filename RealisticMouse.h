@@ -1,233 +1,214 @@
 #pragma once
 
-#include <chrono>
-#include <mutex>
-#include <iostream>
-#include <queue>
 #include <future>
+#include <queue>
+#include <shared_mutex>
+#include <optional>
+#include <chrono>
 
 namespace real_mouse
 {
-  using namespace std::chrono_literals;
-
-  namespace utils
-  {
-    class ThreadPool
+    using namespace std::chrono_literals;
+    
+    namespace detail
     {
-    private:
-      class Locker
-      {
-      public:
-        Locker()                         = default;
-        Locker(const Locker&)            = delete;
-        Locker(Locker&&)                 = default;
-        Locker& operator=(const Locker&) = delete;
-        Locker& operator=(Locker&&)      = default;
-        ~Locker()                        = default;
-
-        [[maybe_unused]] Locker& Lock() noexcept
+        namespace concepts
         {
-          ++lockersCount;
-          return *this;
+            template <typename Fn, typename ...Args>
+            concept Task = std::is_invocable_v<Fn, Args...>&& std::is_void_v<std::invoke_result_t<Fn, Args...>>;
         }
 
-        [[maybe_unused]] Locker& Unlock() noexcept
+        class SynchoniousTasksQueue
         {
-          if (lockersCount)
-          {
-            --lockersCount;
-          }
-          return *this;
+        private:
+            using future_type = std::future<void>;
+
+        public:
+            SynchoniousTasksQueue();
+
+            SynchoniousTasksQueue(const SynchoniousTasksQueue&) = delete;
+            SynchoniousTasksQueue(SynchoniousTasksQueue&&) = delete;
+
+            SynchoniousTasksQueue& operator = (const SynchoniousTasksQueue&) = delete;
+            SynchoniousTasksQueue& operator = (SynchoniousTasksQueue&&) = delete;
+
+            ~SynchoniousTasksQueue();
+
+        public:
+            template<typename Func, typename ...Args>
+                requires concepts::Task<Func, Args...>
+            void add_task(Func&& task, Args&& ...args);
+            void block_and_wait() const;
+
+            [[nodiscard]] bool is_running() const;
+
+        private:
+            void process_tasks();
+
+        private:
+            std::thread                     m_worker;
+            std::queue<future_type>         m_tasks;
+            std::condition_variable_any     m_newTaskWaiter;
+            std::atomic_bool                m_terminate;
+            
+            mutable std::mutex                  m_tasksAdditionMutex;
+            mutable std::shared_mutex           m_tasksModificationMutex;
+            mutable std::condition_variable_any m_endTaskWaiter;
+        };
+
+        SynchoniousTasksQueue::SynchoniousTasksQueue()
+            : m_worker{ &SynchoniousTasksQueue::process_tasks, this }
+            , m_tasks{}
+            , m_newTaskWaiter{}
+            , m_terminate{}
+            , m_tasksModificationMutex{}
+        {}
+
+        SynchoniousTasksQueue::~SynchoniousTasksQueue()
+        {
+            m_terminate = true;
+            m_newTaskWaiter.notify_all();
+            m_worker.join();
         }
 
-        [[nodiscard]] bool IsLocked() const noexcept
+        template<typename Func, typename ...Args>
+            requires concepts::Task<Func, Args...>
+        void SynchoniousTasksQueue::add_task(Func&& task, Args&& ...args)
         {
-          return lockersCount;
+            {
+                auto _ = std::scoped_lock(m_tasksAdditionMutex,
+                                          m_tasksModificationMutex);
+
+                m_tasks.emplace(std::async(std::launch::deferred,
+                                           std::forward<Func>(task),
+                                           std::forward<Args>(args)...));
+            }
+
+            m_newTaskWaiter.notify_one();
         }
 
-      private:
-        std::atomic<size_t> lockersCount = 0;
-      };
+        void SynchoniousTasksQueue::block_and_wait() const
+        {
+            auto lock = std::unique_lock(m_tasksModificationMutex, std::defer_lock);
+            auto _ = std::scoped_lock(lock, m_tasksAdditionMutex);
+
+            // m_tasksAdditionMutex is not unlocked here to block add_task function, until waiting ends
+            m_endTaskWaiter.wait(lock, [this]() { return m_tasks.empty(); });
+        }
+
+        bool SynchoniousTasksQueue::is_running() const
+        {
+            auto _ = std::shared_lock(m_tasksModificationMutex);
+
+            return !m_tasks.empty();
+        }
+
+        void SynchoniousTasksQueue::process_tasks()
+        {
+            while (!m_terminate)
+            {
+                auto lock = std::unique_lock(m_tasksModificationMutex);
+
+                m_newTaskWaiter.wait(lock, [this] () { return m_terminate || !m_tasks.empty(); });
+
+                if (m_terminate)
+                {
+                    m_tasks = {};
+                    m_endTaskWaiter.notify_all();
+                    break;
+                }
+
+                auto &&task = m_tasks.front();
+
+                lock.unlock();
+                task.wait(); // task execution
+                lock.lock();
+
+                m_tasks.pop();
+
+                if (m_tasks.empty()) { m_endTaskWaiter.notify_all(); }
+            }
+        }
+    }
+
+    // Class that represents the computer mouse.
+    class Mouse
+    {
+    public:
+        // Enum that represents mouse's buttons.
+        // Note, that mouse wheel is not provided now.
+        enum class Button
+        {
+            LEFT = 0,
+            RIGHT = 1,
+        };
 
     public:
-      using Task = std::pair<size_t, std::future<void>>;
+        Mouse(const Mouse&) = delete;
+        Mouse(Mouse&&) = delete;
 
-      ThreadPool(size_t threadsCount, std::queue<Task> tasks = {})
-        : m_threads{}, m_tasksQueue{ std::move(tasks) }, m_newTaskWaiter{},
-        m_queueLock{}, m_terminate{ false }
-      {
-        m_threads.reserve(threadsCount);
-        for (size_t i = 0; i < threadsCount; ++i)
-        {
-          m_threads.emplace_back(std::thread{ &ThreadPool::ProcessTasks, this });
-        }
-      }
+        Mouse& operator=(const Mouse&) = delete;
+        Mouse& operator=(Mouse&&) = delete;
 
-      ThreadPool() = delete;
-      ThreadPool(const ThreadPool&) = delete;
-      ThreadPool(ThreadPool&&) = delete;
-      ThreadPool& operator=(const ThreadPool&) = delete;
-      ThreadPool& operator=(ThreadPool&&) = delete;
+        ~Mouse() = default;
 
-      ~ThreadPool()
-      {
-        Terminate();
-      }
+    public:
+        // Mouse is singleton.
+        static Mouse& Instance();
 
-      template<typename Func, typename ...Args>
-        requires(std::is_invocable_v<Func, Args...>)
-      [[maybe_unused]] ThreadPool& AddTask(Func&& task, Args&& ...args)
-      {
-        std::lock_guard guard{ m_queueLock };
-        auto &&future = std::async(std::launch::deferred, std::forward<Func>(task),
-          std::forward<Args>(args)...);
-        m_tasksQueue.emplace(Task{ m_tasksQueue.size(), std::move(future) });
-        m_newTaskWaiter.notify_one();
+        // Returns current coordinates. Don't require Mouse object creation.
+        static std::pair<std::int32_t, std::int32_t> GetPosition();
 
-        return *this;
-      }
+    public:
+        // Simulates mouse click on current coordinates.
+        // Takes the mouse button and the time during which mouse button will be pressed.
+        [[maybe_unused]] Mouse& click(Button button = Button::LEFT, std::chrono::milliseconds duration = 100ms);
 
-      void Terminate()
-      {
-        m_terminate = true;
-        m_newTaskWaiter.notify_all();
-        for (auto &&thread : m_threads)
-        {
-          thread.join();
-        }
-      }
+        // Moves mouse to given coordinates.
+        // Note that, unlike set_position(....), this function moves mouse smoothly.
+        [[maybe_unused]] Mouse& move(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
-      [[maybe_unused]] ThreadPool& WaitAll()
-      {
-        std::unique_lock lock{ m_queueLock };
-        m_endAllTasksWaiter.wait(lock, [this]()
-                                       {
-                                         return m_tasksQueue.empty() && !m_processLocker.IsLocked();
-                                       });
-        return *this;
-      }
+        // Pushes down given mouse button and holds one in pressed state.
+        [[maybe_unused]] Mouse& push_down(Button button = Button::LEFT);
 
-      [[nodiscard]] bool IsBusy() const
-      {
-        std::lock_guard guard{ m_queueLock };
-        return !m_tasksQueue.empty() || m_processLocker.IsLocked();
-      }
+        // Pushes up given mouse button and holds one in unpressed state.
+        [[maybe_unused]] Mouse& push_up(Button button = Button::LEFT);
+
+        // Moves mouse to given coordinates.
+        // Note that, unlike set_position(....), this function moves mouse smoothly.
+        [[maybe_unused]] Mouse& realistic_move(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
+
+        // Sets mouse coordinates to given ones.
+        // Note that, unlike move(....), this function instantly sets coordinates.
+        [[maybe_unused]] Mouse& set_position(std::int32_t x, std::int32_t y);
+
+        // Blocks calling thread, until all click() operations become finished.
+        [[maybe_unused]] const Mouse& wait_clicks() const;
+
+        // Blocks calling thread, until all click() operations become finished.
+        [[maybe_unused]] Mouse& wait_clicks();
+
+        // Blocks calling thread, until all moving operations become finished.
+        [[maybe_unused]] const Mouse& wait_moves() const;
+
+        // Blocks calling thread, until all moving operations become finished.
+        [[maybe_unused]] Mouse& wait_moves();
+
+        // Returns true if any thread processing click operation (here is underlying operations counter). False otherwise.
+        [[nodiscard]] bool is_clicking() const;
+
+        //Returns true if any thread processing moving operation (include realistic_move and similar). False otherwise.
+        [[nodiscard]] bool is_moving() const;
 
     private:
-      void ProcessTasks()
-      {
-        while (true)
-        {
-          std::unique_lock lock{ m_queueLock };
-          m_processLocker.Unlock();
-          m_newTaskWaiter.wait(lock, [this]() { return !m_tasksQueue.empty() || m_terminate; });
+        Mouse() = default;
 
-          if (m_tasksQueue.empty() && m_terminate)
-          {
-            break;
-          }
+    private:
+        void move_impl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
+        void realistic_move_impl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
-          m_processLocker.Lock();
-          auto task = std::move(m_tasksQueue.front());
-          m_tasksQueue.pop();
-
-          lock.unlock();
-          task.second.wait(); // Process task in calling thread
-          lock.lock();
-
-          if (m_tasksQueue.empty())
-          {
-            m_endAllTasksWaiter.notify_all();
-          }
-        }
-      }
-
-      std::vector<std::thread>        m_threads;
-      std::queue<Task>                m_tasksQueue;
-      std::condition_variable         m_newTaskWaiter;
-      std::condition_variable         m_endAllTasksWaiter;
-      mutable std::mutex              m_queueLock;
-      std::atomic_bool                m_terminate;
-      Locker                          m_processLocker;
+    private:
+        detail::SynchoniousTasksQueue m_movingTasks;
+        detail::SynchoniousTasksQueue m_clickingTasks;
     };
-  }
-
-  // Class that represents the computer mouse.
-  class Mouse
-  {
-  public:
-    // Enum that represents mouse's buttons.
-    // Note, that mouse wheel is not provided now.
-    enum class Buttons
-    {
-      LEFT = 0,
-      RIGHT = 1,
-    };
-
-    Mouse(const Mouse&)            = delete;
-    Mouse(Mouse&&)                 = delete;
-    Mouse& operator=(const Mouse&) = delete;
-    Mouse& operator=(Mouse&&)      = delete;
-    ~Mouse()                       = default;
-
-    // Mouse class can has only one object.
-    // In that cause Mouse can be obtained only by this fabric method.
-    static Mouse& Init();
-
-    // Returns current coordinates. Don't require Mouse object creation.
-    static std::pair<std::int32_t, std::int32_t> GetPosition();
-
-    // Simulates mouse click on current coordinates.
-    // Takes the mouse button and the time during which mouse button will be pressed.
-    [[maybe_unused]] Mouse&            Click(std::chrono::milliseconds clickDuration = 100ms, Buttons button = Buttons::LEFT);
-
-    // Moves mouse to given coordinates.
-    // Note that, unlike SetPosition(....), this function moves mouse smoothly.
-    [[maybe_unused]] Mouse&            Move(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
-
-    // Pushes down given mouse button and holds one in pressed state.
-    [[maybe_unused]] Mouse&            PushDown(Buttons button = Buttons::LEFT);
-
-    // Pushes up given mouse button and holds one in unpressed state.
-    [[maybe_unused]] Mouse&            PushUp(Buttons button = Buttons::LEFT);
-
-    // Moves mouse to given coordinates.
-    // Note that, unlike SetPosition(....), this function moves mouse smoothly.
-    [[maybe_unused]] Mouse&            RealisticMove(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
-
-    // Sets mouse coordinates to given ones.
-    // Note that, unlike Move(....), this function instantly sets coordinates.
-    [[maybe_unused]] Mouse&            SetPosition(std::int32_t x, std::int32_t y);
-
-    // Blocks calling thread, until all Click() operations become finished.
-    [[maybe_unused]] const Mouse&      WaitForClick() const;
-    // Blocks calling thread, until all Click() operations become finished.
-    // Non-const version. Do the same as WaitForClick const.
-    [[maybe_unused]] Mouse&            WaitForClick();
-
-    // Blocks calling thread, until all moving operations become finished.
-    [[maybe_unused]] const Mouse&      WaitForMove() const;
-    // Blocks calling thread, until all moving operations become finished.
-    // Non-const version. Do the same as WaitForClick const.
-    [[maybe_unused]] Mouse&            WaitForMove();
-
-    //// Observers
-
-    // Returns true if any thread processing click operation (here is underlying operations counter). False otherwise.
-    [[nodiscard]] bool                 IsClicking() const;
-
-    //Returns true if any thread processing moving operation (include RealisticMove and similar). False otherwise.
-    [[nodiscard]] bool                 IsMoving() const;
-
-  private:
-    // Don't change threads count in ThreadPool inside Mouse class!
-    // It causes to undefined execution order of any operation.
-    Mouse() : m_movingTasks{ 1 }, m_clickingTasks{ 1 } {}
-
-    void MoveImpl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
-    void RealisticMoveImpl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
-
-    mutable utils::ThreadPool m_movingTasks;
-    mutable utils::ThreadPool m_clickingTasks;
-  };
 }

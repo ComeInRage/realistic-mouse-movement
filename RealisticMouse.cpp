@@ -1,11 +1,11 @@
+#include "RealisticMouse.h"
+
 #include <windows.h>
 #include <algorithm>
 #include <random>
 #include <utility>
 #include <numbers>
 #include <thread>
-
-#include "RealisticMouse.h"
 
 #ifdef max
 #define DISABLED_max max
@@ -19,7 +19,7 @@
 
 namespace real_mouse
 {
-  Mouse& Mouse::Init()
+  Mouse& Mouse::Instance()
   {
     static Mouse mouse{};
     return mouse;
@@ -35,91 +35,88 @@ namespace real_mouse
     return { pos.x, pos.y };
   }
 
-  Mouse& Mouse::Click(std::chrono::milliseconds clickDuration/* = 100ms*/, Buttons button/* = Buttons::LEFT*/)
+  Mouse& Mouse::click(Button button/* = Button::LEFT*/, std::chrono::milliseconds duration/* = 100ms*/)
   {
-    namespace thr = std::this_thread;
-
-    m_clickingTasks.AddTask([this, button, clickDuration]()
-                            {
-                              PushDown(button);
-                              thr::sleep_for(clickDuration);
-                              PushUp(button);
-                            });
-
+    m_clickingTasks.add_task([this, button, duration]()
+                             {
+                               push_down(button);
+                               std::this_thread::sleep_for(duration);
+                               push_up(button);
+                             });
     return *this;
   }
 
-  Mouse& Mouse::Move(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
+  Mouse& Mouse::move(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
   {
-    m_movingTasks.AddTask(&Mouse::MoveImpl, this, x, y, velocity);
+    m_movingTasks.add_task(&Mouse::move_impl, this, x, y, velocity);
     return *this;
   }
 
-  Mouse& Mouse::PushDown(Buttons button/* = Buttons::LEFT*/)
+  Mouse& Mouse::push_down(Button button/* = Button::LEFT*/)
   {
     auto [x, y] = GetPosition();
-    DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_RIGHTDOWN);
+    DWORD buttonEvent = (button == Button::LEFT ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_RIGHTDOWN);
     MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
     INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
     SendInput(1, &input, sizeof(input));
     return *this;
   }
 
-  Mouse& Mouse::PushUp(Buttons button/* = Buttons::LEFT*/)
+  Mouse& Mouse::push_up(Button button/* = Button::LEFT*/)
   {
     auto [x, y] = GetPosition();
-    DWORD buttonEvent = (button == Buttons::LEFT ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP);
+    DWORD buttonEvent = (button == Button::LEFT ? MOUSEEVENTF_LEFTUP : MOUSEEVENTF_RIGHTUP);
     MOUSEINPUT mouseInput{ x, y, 0, (DWORD)MOUSEEVENTF_ABSOLUTE | buttonEvent };
     INPUT input{ .type = INPUT_MOUSE, .mi = mouseInput }; // Careful! mi is a member of the anonimous union
     SendInput(1, &input, sizeof(input));
     return *this;
   }
 
-  Mouse& Mouse::RealisticMove(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
+  Mouse& Mouse::realistic_move(std::int32_t x, std::int32_t y, std::int32_t velocity/* = 1000*/)
   {
-    m_movingTasks.AddTask(&Mouse::RealisticMoveImpl, this, x, y, velocity);
+    m_movingTasks.add_task(&Mouse::realistic_move_impl, this, x, y, velocity);
     return *this;
   }
 
-  Mouse& Mouse::SetPosition(std::int32_t x, std::int32_t y)
+  Mouse& Mouse::set_position(std::int32_t x, std::int32_t y)
   {
     SetCursorPos(x, y);
     return *this;
   }
 
-  const Mouse& Mouse::WaitForClick() const
+  const Mouse& Mouse::wait_clicks() const
   {
-    m_clickingTasks.WaitAll();
+    m_clickingTasks.block_and_wait();
     return *this;
   }
 
-  Mouse& Mouse::WaitForClick()
+  Mouse& Mouse::wait_clicks()
   {
-    return const_cast<Mouse&>(const_cast<const Mouse&>(*this).WaitForClick());
+    return const_cast<Mouse&>(const_cast<const Mouse&>(*this).wait_clicks());
   }
 
-  const Mouse& Mouse::WaitForMove() const
+  const Mouse& Mouse::wait_moves() const
   {
-    m_movingTasks.WaitAll();
+    m_movingTasks.block_and_wait();
     return *this;
   }
 
-  Mouse& Mouse::WaitForMove()
+  Mouse& Mouse::wait_moves()
   {
-    return const_cast<Mouse&>(const_cast<const Mouse&>(*this).WaitForMove());
+    return const_cast<Mouse&>(const_cast<const Mouse&>(*this).wait_moves());
   }
 
-  bool Mouse::IsClicking() const
+  bool Mouse::is_clicking() const
   {
-    return m_clickingTasks.IsBusy();
+    return m_clickingTasks.is_running();
   }
 
-  bool Mouse::IsMoving() const
+  bool Mouse::is_moving() const
   {
-    return m_movingTasks.IsBusy();
+    return m_movingTasks.is_running();
   }
 
-  void Mouse::MoveImpl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
+  void Mouse::move_impl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
   {
     namespace ch = std::chrono;
 
@@ -143,16 +140,16 @@ namespace real_mouse
 
       remainDistance = std::hypot(destX - currX, destY - currY);
 
-      SetPosition(static_cast<std::int32_t>(currX),
+      set_position(static_cast<std::int32_t>(currX),
         static_cast<std::int32_t>(currY));
 
       std::this_thread::sleep_for(iterTimeout);
     }
 
-    SetPosition(destX, destY);
+    set_position(destX, destY);
   }
 
-  void Mouse::RealisticMoveImpl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
+  void Mouse::realistic_move_impl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
   {
     // The algorithm was inspired by WindMouse
     // https://ben.land/post/2021/04/25/windmouse-human-mouse-movement/
@@ -243,7 +240,7 @@ namespace real_mouse
       }
 #endif
 
-      MoveImpl(currentX + static_cast<std::int32_t>(stepX), 
+      move_impl(currentX + static_cast<std::int32_t>(stepX), 
                currentY + static_cast<std::int32_t>(stepY), 
                velocity);
 
@@ -259,6 +256,6 @@ namespace real_mouse
       std::this_thread::sleep_for(iterTimeout);
     }
 
-    MoveImpl(destX, destY, velocity);
+    move_impl(destX, destY, velocity);
   }
 }

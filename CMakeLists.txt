@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.5)
 
-project(realistic-mouse-movement CXX)
+project(realistic-mouse-movement C CXX)
 
 add_library(realistic-mouse-movement STATIC RealisticMouse.h
                                             RealisticMouse.cpp
