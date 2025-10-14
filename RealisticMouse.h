@@ -5,39 +5,31 @@
 #include <shared_mutex>
 #include <optional>
 #include <chrono>
+#include <concepts>
+#include <ranges>
 
 namespace real_mouse
 {
-    using namespace std::chrono_literals;
-    
     namespace detail
     {
-        namespace concepts
+        class SynchronousMouseTasksQueue
         {
-            template <typename Fn, typename ...Args>
-            concept Task = std::is_invocable_v<Fn, Args...>&& std::is_void_v<std::invoke_result_t<Fn, Args...>>;
-        }
-
-        class SynchoniousTasksQueue
-        {
-        private:
-            using future_type = std::future<void>;
+        public:
+            using task_type = std::function<void()>;
 
         public:
-            SynchoniousTasksQueue();
+            SynchronousMouseTasksQueue();
 
-            SynchoniousTasksQueue(const SynchoniousTasksQueue&) = delete;
-            SynchoniousTasksQueue(SynchoniousTasksQueue&&) = delete;
+            SynchronousMouseTasksQueue(const SynchronousMouseTasksQueue&) = delete;
+            SynchronousMouseTasksQueue(SynchronousMouseTasksQueue&&) = delete;
 
-            SynchoniousTasksQueue& operator = (const SynchoniousTasksQueue&) = delete;
-            SynchoniousTasksQueue& operator = (SynchoniousTasksQueue&&) = delete;
+            SynchronousMouseTasksQueue& operator = (const SynchronousMouseTasksQueue&) = delete;
+            SynchronousMouseTasksQueue& operator = (SynchronousMouseTasksQueue&&) = delete;
 
-            ~SynchoniousTasksQueue();
+            ~SynchronousMouseTasksQueue();
 
         public:
-            template<typename Func, typename ...Args>
-                requires concepts::Task<Func, Args...>
-            void add_task(Func&& task, Args&& ...args);
+            void add_task(task_type task);
             void block_and_wait() const;
 
             [[nodiscard]] bool is_running() const;
@@ -47,89 +39,133 @@ namespace real_mouse
 
         private:
             std::thread                     m_worker;
-            std::queue<future_type>         m_tasks;
+            std::queue<task_type>           m_tasks;
             std::condition_variable_any     m_newTaskWaiter;
             std::atomic_bool                m_terminate;
-            
+
             mutable std::mutex                  m_tasksAdditionMutex;
             mutable std::shared_mutex           m_tasksModificationMutex;
             mutable std::condition_variable_any m_endTaskWaiter;
         };
-
-        SynchoniousTasksQueue::SynchoniousTasksQueue()
-            : m_worker{ &SynchoniousTasksQueue::process_tasks, this }
-            , m_tasks{}
-            , m_newTaskWaiter{}
-            , m_terminate{}
-            , m_tasksModificationMutex{}
-        {}
-
-        SynchoniousTasksQueue::~SynchoniousTasksQueue()
-        {
-            m_terminate = true;
-            m_newTaskWaiter.notify_all();
-            m_worker.join();
-        }
-
-        template<typename Func, typename ...Args>
-            requires concepts::Task<Func, Args...>
-        void SynchoniousTasksQueue::add_task(Func&& task, Args&& ...args)
-        {
-            {
-                auto _ = std::scoped_lock(m_tasksAdditionMutex,
-                                          m_tasksModificationMutex);
-
-                m_tasks.emplace(std::async(std::launch::deferred,
-                                           std::forward<Func>(task),
-                                           std::forward<Args>(args)...));
-            }
-
-            m_newTaskWaiter.notify_one();
-        }
-
-        void SynchoniousTasksQueue::block_and_wait() const
-        {
-            auto lock = std::unique_lock(m_tasksModificationMutex, std::defer_lock);
-            auto _ = std::scoped_lock(lock, m_tasksAdditionMutex);
-
-            // m_tasksAdditionMutex is not unlocked here to block add_task function, until waiting ends
-            m_endTaskWaiter.wait(lock, [this]() { return m_tasks.empty(); });
-        }
-
-        bool SynchoniousTasksQueue::is_running() const
-        {
-            auto _ = std::shared_lock(m_tasksModificationMutex);
-
-            return !m_tasks.empty();
-        }
-
-        void SynchoniousTasksQueue::process_tasks()
-        {
-            while (!m_terminate)
-            {
-                auto lock = std::unique_lock(m_tasksModificationMutex);
-
-                m_newTaskWaiter.wait(lock, [this] () { return m_terminate || !m_tasks.empty(); });
-
-                if (m_terminate)
-                {
-                    m_tasks = {};
-                    m_endTaskWaiter.notify_all();
-                    break;
-                }
-
-                auto &&task = m_tasks.front();
-
-                lock.unlock();
-                task.wait(); // task execution
-                lock.lock();
-
-                m_tasks.pop();
-
-                if (m_tasks.empty()) { m_endTaskWaiter.notify_all(); }
-            }
-        }
     }
+
+    namespace concepts
+    {
+        template <typename T>
+        concept ExecutionPolicy = requires(T && policy, detail::SynchronousMouseTasksQueue::task_type task)
+        {
+            { policy.add_move_task(std::move(task)) };
+            { policy.add_click_task(std::move(task)) };
+            { policy.join_move_tasks() };
+            { policy.join_click_tasks() };
+            { policy.is_running() } -> std::convertible_to<bool>;
+        };
+    }
+
+    class ParallelPolicy
+    {
+    public:
+        using task_type = detail::SynchronousMouseTasksQueue::task_type;
+
+    public:
+        void add_move_task(task_type task);
+        void add_click_task(task_type task);
+        void join_move_tasks() const;
+        void join_click_tasks() const;
+        [[nodiscard]] bool is_running() const;
+
+    private:
+        detail::SynchronousMouseTasksQueue m_moves;
+        detail::SynchronousMouseTasksQueue m_clicks;
+    };
+
+    class SequencedPolicy
+    {
+    public:
+        using task_type = detail::SynchronousMouseTasksQueue::task_type;
+
+    public:
+        void add_move_task(task_type task);
+        void add_click_task(task_type task);
+        void join_move_tasks() const;
+        void join_click_tasks() const;
+        [[nodiscard]] bool is_running() const;
+
+    private:
+        void add_task(task_type task);
+        void join_tasks() const;
+
+    private:
+        detail::SynchronousMouseTasksQueue m_tasks;
+    };
+
+    namespace execution
+    {
+        extern ParallelPolicy par;
+        extern SequencedPolicy seq;
+    }
+
+    namespace concepts
+    {
+        template <typename T>
+        concept Point = requires (T && point)
+        {
+            { point.x } -> std::convertible_to<std::int32_t>;
+            { point.y } -> std::convertible_to<std::int32_t>;
+        };
+
+        template <typename T>
+        concept TrajectoryIterator = std::input_iterator<T> && requires (T && t)
+        {
+            { *t } -> Point;
+        };
+
+        template <typename T>
+        concept Trajectory = std::ranges::range<T> && requires(T && t)
+        {
+            { t.begin() } -> TrajectoryIterator;
+            { t.next() } -> Point;
+        };
+
+        template <typename T>
+        concept TrajectoryTemplate = requires(T && t)
+        {
+            { t.make_trajectory() } -> Trajectory;
+        };
+    }
+
+    struct Point
+    {
+        using coord_type = std::int32_t;
+
+        coord_type x;
+        coord_type y;
+    };
+
+    class Line
+    {
+    public:
+        class iterator
+        {
+        public:
+            [[nodiscard]] Point operator * () const noexcept { return current; }
+            [[maybe_unused]] iterator& operator ++ () noexcept { next(); return *this; };
+            [[nodiscard]] iterator operator ++ (int) noexcept { auto copy = *this; copy.next(); return copy; };
+
+        private:
+            void next();
+
+        private:
+            const Line* trajectory;
+            Point current;
+        };
+
+    private:
+        Point begin;
+        Point end;
+    };
+
+    using namespace std::chrono_literals;
 
     // Class that represents the computer mouse.
     class Mouse
@@ -208,7 +244,7 @@ namespace real_mouse
         void realistic_move_impl(std::int32_t x, std::int32_t y, std::int32_t velocity = 1000);
 
     private:
-        detail::SynchoniousTasksQueue m_movingTasks;
-        detail::SynchoniousTasksQueue m_clickingTasks;
+        detail::SynchronousMouseTasksQueue m_movingTasks;
+        detail::SynchronousMouseTasksQueue m_clickingTasks;
     };
 }
