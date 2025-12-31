@@ -168,12 +168,16 @@ namespace real_mouse
     // TRAJECTORIES
 
 
-    void Line::iterator::next()
+    Line::point_type Line::destination() const noexcept
     {
-        auto dest = trajectory->end;
-        auto xDist = destX - startX;
-        auto yDist = destY - startY;
-        auto remainDistance = std::hypot(xDist, yDist);
+        return m_dest;
+    }
+
+    Line::vector_type Line::next(point_type current) const noexcept
+    {
+        auto dest = destination();
+        return { static_cast<Vector::length>(dest.x) - current.x,
+                 static_cast<Vector::length>(dest.y) - current.y };
     }
 
 
@@ -279,6 +283,7 @@ namespace real_mouse
 
     void Mouse::move_impl(std::int32_t destX, std::int32_t destY, std::int32_t velocity/* = 1000*/)
     {
+        std::views::transform;
         namespace ch = std::chrono;
 
         std::chrono::nanoseconds iterTimeout{ static_cast<std::int64_t>((1. / velocity) * 1000000) };

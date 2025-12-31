@@ -105,64 +105,65 @@ namespace real_mouse
         extern SequencedPolicy seq;
     }
 
-    namespace concepts
-    {
-        template <typename T>
-        concept Point = requires (T && point)
-        {
-            { point.x } -> std::convertible_to<std::int32_t>;
-            { point.y } -> std::convertible_to<std::int32_t>;
-        };
-
-        template <typename T>
-        concept TrajectoryIterator = std::input_iterator<T> && requires (T && t)
-        {
-            { *t } -> Point;
-        };
-
-        template <typename T>
-        concept Trajectory = std::ranges::range<T> && requires(T && t)
-        {
-            { t.begin() } -> TrajectoryIterator;
-            { t.next() } -> Point;
-        };
-
-        template <typename T>
-        concept TrajectoryTemplate = requires(T && t)
-        {
-            { t.make_trajectory() } -> Trajectory;
-        };
-    }
-
     struct Point
     {
-        using coord_type = std::int32_t;
-
-        coord_type x;
-        coord_type y;
+        using coord = std::int32_t;
+        
+        coord x;
+        coord y;
     };
 
-    class Line
+    struct Vector
+    {
+        using length = double;
+        
+        length x;
+        length y;
+    };
+
+    template <typename Derived>
+    class TrajectoryInterface
     {
     public:
-        class iterator
-        {
-        public:
-            [[nodiscard]] Point operator * () const noexcept { return current; }
-            [[maybe_unused]] iterator& operator ++ () noexcept { next(); return *this; };
-            [[nodiscard]] iterator operator ++ (int) noexcept { auto copy = *this; copy.next(); return copy; };
+        using point_type = Point;
+        using vector_type = Vector;
+        using ratio_type = double;
 
-        private:
-            void next();
+    public:
+        [[nodiscard]] decltype(auto) begin() const noexcept { static_assert(std::derived_from<Derived, TrajectoryInterface<Derived>>); return static_cast<const Derived&>(*this).begin(); }
+        [[nodiscard]] decltype(auto) end() const noexcept { return static_cast<const Derived&>(*this).end(); }
+        
+        [[nodiscard]] decltype(auto) begin() noexcept { return static_cast<Derived&>(*this).begin(); }
+        [[nodiscard]] decltype(auto) end() noexcept { return static_cast<Derived&>(*this).end(); }
 
-        private:
-            const Line* trajectory;
-            Point current;
-        };
+        [[nodiscard]] ratio_type ratio() const noexcept { return m_ratio; }
+        [[nodiscard]] vector_type next(point_type current) noexcept { return static_cast<Derived&>(*this).next(current); }
 
     private:
-        Point begin;
-        Point end;
+        ratio_type m_ratio;
+    };
+
+    class Line : public TrajectoryInterface<Line>
+    {
+    private:
+        using base_type = TrajectoryInterface;
+
+    public:
+        Line(point_type dest, ratio_type ratio) noexcept;
+
+        Line() = delete;
+        Line(const Line&) = default;
+        Line(Line&&) = default;
+        Line& operator = (const Line&) = default;
+        Line& operator = (Line&&) = default;
+        ~Line() = default;
+
+    public:
+        [[nodiscard]] point_type destination() const noexcept;
+        [[nodiscard]] vector_type next(point_type current) const noexcept;
+    
+    private:
+        point_type m_dest;
     };
 
     using namespace std::chrono_literals;
