@@ -10,16 +10,24 @@
 
 namespace real_mouse
 {
+    using coord_type = std::uint32_t;
+
+    struct point_type
+    {
+        coord_type x;
+        coord_type y;
+    };
+
     namespace concepts
     {
         template <typename T>
-        concept MouseControlPolicy = requires(T && policy, std::function<void()> task)
+        concept MousePolicy = requires(T && policy)
         {
-            { policy.do_move() };
-            { policy.do_click(std::move(task)) };
-            { policy.join_move_tasks() };
-            { policy.join_click_tasks() };
-            { policy.is_running() } -> std::convertible_to<bool>;
+            { policy.push_up() };
+            { policy.push_down() };
+            { policy.click() };
+            { policy.set_position(size_t{0}, size_t{0}) };
+            { policy.get_position() } -> std::convertible_to<point_type>;
         };
 
         template <typename T>
@@ -27,9 +35,9 @@ namespace real_mouse
         {
             { policy.do_move(std::move(task)) };
             { policy.do_click(std::move(task)) };
-            { policy.join_move_tasks() };
-            { policy.join_click_tasks() };
-            { policy.is_running() } -> std::convertible_to<bool>;
+            { policy.wait_for_move() };
+            { policy.wait_for_click() };
+            { policy.wait() };
         };
     }
 
