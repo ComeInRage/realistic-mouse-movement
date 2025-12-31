@@ -10,52 +10,23 @@
 
 namespace real_mouse
 {
-    namespace detail
-    {
-        class SynchronousMouseTasksQueue
-        {
-        public:
-            using task_type = std::function<void()>;
-
-        public:
-            SynchronousMouseTasksQueue();
-
-            SynchronousMouseTasksQueue(const SynchronousMouseTasksQueue&) = delete;
-            SynchronousMouseTasksQueue(SynchronousMouseTasksQueue&&) = delete;
-
-            SynchronousMouseTasksQueue& operator = (const SynchronousMouseTasksQueue&) = delete;
-            SynchronousMouseTasksQueue& operator = (SynchronousMouseTasksQueue&&) = delete;
-
-            ~SynchronousMouseTasksQueue();
-
-        public:
-            void add_task(task_type task);
-            void block_and_wait() const;
-
-            [[nodiscard]] bool is_running() const;
-
-        private:
-            void process_tasks();
-
-        private:
-            std::thread                     m_worker;
-            std::queue<task_type>           m_tasks;
-            std::condition_variable_any     m_newTaskWaiter;
-            std::atomic_bool                m_terminate;
-
-            mutable std::mutex                  m_tasksAdditionMutex;
-            mutable std::shared_mutex           m_tasksModificationMutex;
-            mutable std::condition_variable_any m_endTaskWaiter;
-        };
-    }
-
     namespace concepts
     {
         template <typename T>
-        concept ExecutionPolicy = requires(T && policy, detail::SynchronousMouseTasksQueue::task_type task)
+        concept MouseControlPolicy = requires(T && policy, std::function<void()> task)
         {
-            { policy.add_move_task(std::move(task)) };
-            { policy.add_click_task(std::move(task)) };
+            { policy.do_move() };
+            { policy.do_click(std::move(task)) };
+            { policy.join_move_tasks() };
+            { policy.join_click_tasks() };
+            { policy.is_running() } -> std::convertible_to<bool>;
+        };
+
+        template <typename T>
+        concept ExecutionPolicy = requires(T && policy, std::function<void()> task)
+        {
+            { policy.do_move(std::move(task)) };
+            { policy.do_click(std::move(task)) };
             { policy.join_move_tasks() };
             { policy.join_click_tasks() };
             { policy.is_running() } -> std::convertible_to<bool>;

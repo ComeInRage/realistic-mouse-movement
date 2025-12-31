@@ -1,109 +1,155 @@
 #include "RealisticMouse.h"
 
-#include <windows.h>
 #include <algorithm>
-#include <random>
 #include <utility>
-#include <numbers>
+#include <atomic>
 #include <thread>
+#include <random>
+#include <mutex>
+#include <cassert>
+#include <windows.h>
 
 #ifdef max
-#define DISABLED_max max
 #undef max
 #endif
 
 #ifdef min
-#define DISABLED_min min
 #undef min
 #endif
 
-namespace real_mouse
+namespace details
 {
-    namespace detail
+    class TasksQueue
     {
-        SynchronousMouseTasksQueue::SynchronousMouseTasksQueue()
-            : m_worker{ &SynchronousMouseTasksQueue::process_tasks, this }
-            , m_tasks{}
-            , m_newTaskWaiter{}
-            , m_terminate{}
-            , m_tasksModificationMutex{}
-        {
-        }
+    public:
+        using task_type = std::function<void()>;
 
-        SynchronousMouseTasksQueue::~SynchronousMouseTasksQueue()
-        {
-            m_terminate = true;
-            m_newTaskWaiter.notify_all();
-            m_worker.join();
-        }
+    public:
+        TasksQueue();
 
-        void SynchronousMouseTasksQueue::add_task(task_type task)
+        TasksQueue(const TasksQueue&) = delete;
+        TasksQueue(TasksQueue&&) = delete;
+
+        TasksQueue& operator = (const TasksQueue&) = delete;
+        TasksQueue& operator = (TasksQueue&&) = delete;
+
+        ~TasksQueue();
+
+    public:
+        void add_task(task_type task);
+        void join();
+
+    private:
+        void process_tasks();
+
+    private:
+        std::thread                     m_processor;
+        std::queue<task_type>           m_tasks;
+        std::queue<task_type>           m_tasks_after_join;
+        std::atomic_bool                m_terminate;
+        bool                            m_is_joined;
+
+        mutable std::mutex              m_tasks_addition_mutex;
+        mutable std::condition_variable m_new_task_waiter;
+        mutable std::condition_variable m_join_waiter;
+    };
+
+    TasksQueue::TasksQueue()
+        : m_processor{ &TasksQueue::process_tasks, this }
+        , m_tasks{}
+        , m_tasks_after_join{}
+        , m_terminate{}
+        , m_is_joined{}
+        , m_tasks_addition_mutex{}
+        , m_new_task_waiter{}
+        , m_join_waiter{}
+    {}
+
+    TasksQueue::~TasksQueue()
+    {
+        m_terminate.store(true, std::memory_order_release);
+        m_new_task_waiter.notify_all();
+        m_join_waiter.notify_all();
+        m_processor.join();
+    }
+
+    void TasksQueue::add_task(task_type task)
+    {
         {
+            auto _ = std::unique_lock(m_tasks_addition_mutex);
+        
+            if (m_is_joined)
             {
-                auto _ = std::scoped_lock(m_tasksAdditionMutex, m_tasksModificationMutex);
-
-                m_tasks.emplace(std::move(task));
+                m_tasks_after_join.push(std::move(task));
             }
-
-            m_newTaskWaiter.notify_one();
-        }
-
-        void SynchronousMouseTasksQueue::block_and_wait() const
-        {
-            auto lock = std::unique_lock(m_tasksModificationMutex, std::defer_lock);
-            auto _ = std::scoped_lock(lock, m_tasksAdditionMutex);
-
-            // m_tasksAdditionMutex is not unlocked here to block add_task function, until waiting ends
-            m_endTaskWaiter.wait(lock, [this]() { return m_tasks.empty(); });
-        }
-
-        bool SynchronousMouseTasksQueue::is_running() const
-        {
-            auto _ = std::shared_lock(m_tasksModificationMutex);
-
-            return !m_tasks.empty();
-        }
-
-        void SynchronousMouseTasksQueue::process_tasks()
-        {
-            while (!m_terminate)
+            else
             {
-                auto lock = std::unique_lock(m_tasksModificationMutex);
+                m_tasks.push(std::move(task));
+            }
+        }
 
-                m_newTaskWaiter.wait(lock, [this]() { return m_terminate || !m_tasks.empty(); });
+        m_new_task_waiter.notify_all();
+    }
 
-                if (m_terminate)
+    void TasksQueue::join()
+    {
+        auto lock = std::unique_lock(m_tasks_addition_mutex);
+
+        m_is_joined = true;
+
+        m_join_waiter.wait(lock, [this]() { return m_tasks.empty()
+                                                    || m_terminate.load(std::memory_order_acquire); });
+
+        if (!m_tasks.empty())
+        {
+            assert(m_terminate.load(std::memory_order_acquire));
+            return;
+        }
+
+        m_tasks = std::exchange(m_tasks_after_join, {});
+    }
+
+    void TasksQueue::process_tasks()
+    {
+        while (!m_terminate.load(std::memory_order_acquire))
+        {
+            bool notify_joined_thread = false;
+
+            {
+                auto lock = std::unique_lock(m_tasks_addition_mutex);
+
+                m_new_task_waiter.wait(lock, [this]() { return !m_tasks.empty()
+                                                            || m_terminate.load(std::memory_order_acquire); });
+
+                if (m_tasks.empty())
                 {
-                    m_tasks = {};
-                    m_endTaskWaiter.notify_all();
+                    assert(m_terminate.load(std::memory_order_acquire));
                     break;
                 }
 
-                auto&& task = m_tasks.front();
+                auto &&task = m_tasks.front();
 
                 lock.unlock();
 
-                try
-                {
-                    task(); // task execution
-                }
-                catch (...) // TODO: catch exceptions thrown by task
-                {
-                }
+                task();
 
                 lock.lock();
 
                 m_tasks.pop();
+                
+                notify_joined_thread = m_tasks.empty();
+            }
 
-                if (m_tasks.empty()) { m_endTaskWaiter.notify_all(); }
+            if (notify_joined_thread)
+            {
+                m_join_waiter.notify_all();
             }
         }
     }
+}
 
-
-    // POLICIES
-
-
+namespace real_mouse
+{
     void ParallelPolicy::add_move_task(task_type task)
     {
         m_moves.add_task(std::move(task));
