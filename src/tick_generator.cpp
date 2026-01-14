@@ -10,7 +10,7 @@ namespace real_mouse
 
     tick_generator::ticks_count_iterator::value_type tick_generator::ticks_count_iterator::operator * () const noexcept
     {
-        if (m_since == {}) { return 1; }
+        if (m_since == time_point{}) { return 1; }
 
         return (m_now - m_since) / m_tick_duration;
     }
@@ -45,7 +45,7 @@ namespace real_mouse
 
     tick_generator::ticks_count_iterator tick_generator::begin() const noexcept
     {
-        return {};
+        return { m_tick_duration };
     }
 
     tick_generator::sentinel tick_generator::end() const noexcept

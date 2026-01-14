@@ -5,6 +5,7 @@ project(realistic-mouse-movement C CXX)
 set(LIBRARY_NAME realistic-mouse-movement)
 
 add_library(${LIBRARY_NAME} STATIC src/common.cpp
+                                   src/tick_generator.cpp
                                    #src/tasks_queue.cpp
 )
 
