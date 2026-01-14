@@ -7,7 +7,7 @@
 
 namespace real_mouse
 {
-    class tick_generator
+    class ticks_generator
     {
     private:
         using clock_type = std::chrono::steady_clock;
@@ -45,7 +45,7 @@ namespace real_mouse
         static constexpr duration_type default_tick_duration = std::chrono::microseconds{ 1 };
 
     public:
-        tick_generator(duration_type tick_duration = default_tick_duration);
+        ticks_generator(duration_type tick_duration = default_tick_duration);
 
     public:
         [[nodiscard]] ticks_count_iterator begin() const noexcept;
