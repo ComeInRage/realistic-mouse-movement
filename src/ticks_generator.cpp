@@ -12,28 +12,23 @@ namespace real_mouse
 
     ticks_generator::ticks_count_iterator::value_type ticks_generator::ticks_count_iterator::operator * () const noexcept
     {
-        if (m_since == time_point{}) { return 1; }
+        auto last_deref_time = std::exchange(m_last_deref_time, clock_type::now());
 
-        auto ticks_passed = (m_now - m_since) / m_tick_duration;
+        if (last_deref_time == time_point{}) [[unlikely]] { return 1; }
+
+        auto ticks_passed = (m_last_deref_time - last_deref_time) / m_tick_duration;
         assert(ticks_passed >= 0);
         return static_cast<value_type>(ticks_passed);
     }
 
-    ticks_generator::ticks_count_iterator& ticks_generator::ticks_count_iterator::operator ++ ()
+    ticks_generator::ticks_count_iterator& ticks_generator::ticks_count_iterator::operator ++ () noexcept
     {
-        m_since = m_now;
-        m_now = ticks_generator::clock_type::now();
-
         return *this;
     }
 
-    ticks_generator::ticks_count_iterator ticks_generator::ticks_count_iterator::operator ++ (int)
+    ticks_generator::ticks_count_iterator ticks_generator::ticks_count_iterator::operator ++ (int) noexcept
     {
-        auto copy = *this;
-
-        operator++();
-
-        return copy;
+        return *this;
     }
 
     bool ticks_generator::ticks_count_iterator::operator == (sentinel) const noexcept

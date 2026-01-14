@@ -9,6 +9,8 @@ namespace rm = real_mouse;
 int main()
 {
     using namespace std::chrono_literals;
+
+    static_assert(std::input_iterator<decltype(rm::ticks_generator{ 2ns }.begin())>);
     
     size_t iterations = 0;
     size_t ticks_passed_in_10_iterations = 0;

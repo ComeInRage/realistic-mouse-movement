@@ -18,6 +18,7 @@ namespace real_mouse
         {
         public:
             using value_type = size_t;
+            using difference_type = std::ptrdiff_t;
             using sentinel = std::default_sentinel_t;
 
         public:
@@ -26,15 +27,14 @@ namespace real_mouse
         public:
             [[nodiscard]] value_type operator * () const noexcept;
 
-            ticks_count_iterator& operator ++ ();
-            [[nodiscard]] ticks_count_iterator operator ++ (int);
+            ticks_count_iterator& operator ++ () noexcept;
+            [[nodiscard]] ticks_count_iterator operator ++ (int) noexcept;
 
             [[nodiscard]] bool operator == (sentinel) const noexcept;
 
         private:
             duration_type m_tick_duration;
-            time_point m_since;
-            time_point m_now;
+            mutable time_point m_last_deref_time;
         };
 
     public:
