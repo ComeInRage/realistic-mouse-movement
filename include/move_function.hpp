@@ -1,6 +1,8 @@
 #include "common.hpp"
 #include "ticks_generator.hpp"
 
+#include <cassert>
+
 
 
 namespace real_mouse
@@ -14,8 +16,9 @@ namespace real_mouse
         }
 
         auto current_position = moving_policy.get_position();
+        auto generator = ticks_generator{};
 
-        for (auto ticks : ticks_generator{})
+        for (auto ticks : generator)
         {
             assert(ticks > 0);
 
@@ -29,7 +32,8 @@ namespace real_mouse
                     }
                 }
 
-                current_position = trajection.next_point(current_position);
+                current_position = trajectory.next_point(generator, current_position);
+                moving_policy.set_position(current_position);
             }
         }
     }

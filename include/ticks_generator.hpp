@@ -10,11 +10,12 @@ namespace real_mouse
 {
     class ticks_generator
     {
-    private:
+    public:
         using clock_type = std::chrono::steady_clock;
         using time_point = clock_type::time_point;
         using duration_type = clock_type::duration;
 
+    private:
         class passed_ticks_count_iterator
         {
         public:

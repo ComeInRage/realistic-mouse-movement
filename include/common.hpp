@@ -5,9 +5,14 @@
 
 
 
+namespace real_mouse // fwd
+{
+    class ticks_generator;
+}
+
 namespace real_mouse
 {
-    using coord_type = size_t;
+    using coord_type = double;
 
     struct point
     {
@@ -15,19 +20,22 @@ namespace real_mouse
         coord_type y;
     };
 
+    [[nodiscard]] inline bool operator == (point lhs, point rhs) noexcept { return static_cast<std::ptrdiff_t>(lhs.x) == static_cast<std::ptrdiff_t>(rhs.x) && static_cast<std::ptrdiff_t>(lhs.y) == static_cast<std::ptrdiff_t>(rhs.y); }
+    [[nodiscard]] inline bool operator != (point lhs, point rhs) noexcept { return !(lhs == rhs); }
+
     namespace concepts
     { 
         template <typename T>
-        concept moving_policy = requires(T && policy)
+        concept moving_policy = requires(T && policy, point position)
         {
-            { policy.set_position(coord_type{0}, coord_type{0}) };
+            { policy.set_position(position) };
             { policy.get_position() } -> std::convertible_to<point>;
         };
 
         template <typename T>
-        concept trajectory = requires(T && t, point current)
+        concept trajectory = requires(T && t, ticks_generator &gen, point current)
         {
-            { t.next_point(current) } -> std::convertible_to<point>;
+            { t.next_point(gen, current) } -> std::convertible_to<point>;
         };
 
         template <typename T>
