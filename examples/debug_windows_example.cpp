@@ -1,5 +1,6 @@
 #include "move_function.hpp"
 
+#include <thread>
 #include <iostream>
 #include <windows.h>
 
@@ -58,12 +59,14 @@ struct line
     rm::point from;
     rm::point to;
     size_t velocity;
+    size_t tick_processed;
 };
 
 line::line(rm::point from, rm::point to, size_t velocity/* = 100 */) noexcept
     : from(from)
     , to(to)
     , velocity(velocity)
+    , tick_processed(0)
 {}
 
 rm::point line::origin()
@@ -89,16 +92,26 @@ rm::point line::next_point(rm::ticks_generator &ticks, rm::point current)
 
     ticks.set_tick_duration(rm::ticks_generator::duration_type{ 1s } / velocity);
 
+    ++tick_processed;
+
     return { current.x + delta_per_tick_x, current.y + delta_per_tick_y };
 }
 
 int main()
 {
+    using namespace std::literals;
     using namespace std::chrono_literals;
 
-    mouse_moving_policy moving_policy;
+    std::this_thread::sleep_for(3s);
 
-    rm::move(moving_policy, line{ { 100., 100. }, { 300., 300. }, 100 });
+    mouse_moving_policy moving_policy;
+    auto trajectory = line{ { 500., 500. }, { 700., 500. }, 100 };
+
+    rm::move(moving_policy, trajectory);
+
+    std::cout << std::format("Mouse moved in {} ticks"sv, trajectory.tick_processed);
+
+    assert(trajectory.tick_processed == 200);
 
     return 0;
 }
