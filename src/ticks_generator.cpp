@@ -15,11 +15,12 @@ namespace real_mouse
     ticks_generator::passed_ticks_count_iterator::value_type ticks_generator::passed_ticks_count_iterator::operator * () const noexcept
     {
         assert(m_generator != nullptr);
-        assert(m_generator->m_tick_duration != duration_type{});
 
         auto last_deref_time = std::exchange(m_last_deref_time, clock_type::now());
 
         if (last_deref_time == time_point{}) [[unlikely]] { return 1; }
+
+        if (m_generator->m_tick_duration == duration_type{}) [[unlikely]] { return 1; }
 
         auto ticks_passed = (m_last_deref_time - last_deref_time) / m_generator->m_tick_duration;
         assert(ticks_passed >= 0);

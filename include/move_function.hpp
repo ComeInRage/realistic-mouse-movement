@@ -10,13 +10,13 @@ namespace real_mouse
     template <concepts::moving_policy MovePolicy, concepts::trajectory Trajectory>
     void move(MovePolicy &&moving_policy, Trajectory &&trajectory)
     {
+        auto generator = ticks_generator{};
+        auto position = moving_policy.get_position();
+
         if constexpr (concepts::with_origin<Trajectory>)
         {
-            moving_policy.set_position(trajectory.origin());
+            position = trajectory.origin();
         }
-
-        auto current_position = moving_policy.get_position();
-        auto generator = ticks_generator{};
 
         for (auto ticks : generator)
         {
@@ -24,16 +24,20 @@ namespace real_mouse
 
             for (; ticks; --ticks)
             {
+                moving_policy.set_position(position);
+
                 if constexpr (concepts::with_destination<Trajectory>)
                 {
-                    if (current_position == trajectory.destination())
+                    if (position == trajectory.destination())
                     {
                         return;
                     }
                 }
 
-                current_position = trajectory.next_point(generator, current_position);
-                moving_policy.set_position(current_position);
+                auto &&[next_point, time] = trajectory.next_point(position);
+
+                position = next_point;
+                generator.set_tick_duration(std::chrono::duration_cast<ticks_generator::duration_type>(time));
             }
         }
     }

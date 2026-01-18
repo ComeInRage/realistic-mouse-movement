@@ -7,6 +7,7 @@ set(LIBRARY_NAME realistic-mouse-movement)
 add_library(${LIBRARY_NAME} STATIC src/common.cpp
                                    src/ticks_generator.cpp
                                    #src/tasks_queue.cpp
+                                   src/trajectories.cpp
 )
 
 target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

@@ -1,14 +1,11 @@
 #pragma once
 
+#include "ticks_generator.hpp"
+
 #include <cstdint>
 #include <concepts>
 
 
-
-namespace real_mouse // fwd
-{
-    class ticks_generator;
-}
 
 namespace real_mouse
 {
@@ -33,9 +30,28 @@ namespace real_mouse
         };
 
         template <typename T>
-        concept trajectory = requires(T && t, ticks_generator &gen, point current)
+        struct is_duration {};
+
+        template <typename Rep, typename Rat>
+        struct is_duration<std::chrono::duration<Rep, Rat>> { static constexpr bool value = true; };
+
+        template <typename T>
+        static constexpr bool is_duration_v = is_duration<T>::value;
+
+        template <typename T>
+        concept duration = is_duration_v<std::remove_reference_t<T>>;
+
+        template <typename T>
+        concept next_point_result = requires (T &&t)
         {
-            { t.next_point(gen, current) } -> std::convertible_to<point>;
+            { t.first } -> std::convertible_to<point>;
+            { t.second } -> duration;
+        };
+
+        template <typename T>
+        concept trajectory = requires(T && t, point current)
+        {
+            { t.next_point(current) } -> next_point_result;
         };
 
         template <typename T>
