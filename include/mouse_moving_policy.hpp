@@ -49,7 +49,7 @@ namespace real_mouse
                 throw std::runtime_error{ "Unable to get cursor position" };
             }
 
-            assert(pos.x > 0 && pos.y > 0);
+            assert(pos.x >= 0 && pos.y >= 0);
             return { static_cast<coord_type>(pos.x), static_cast<coord_type>(pos.y) };
 #endif
         }
