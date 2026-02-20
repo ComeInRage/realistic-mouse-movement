@@ -2,6 +2,7 @@
 #include "ticks_generator.hpp"
 
 #include <cassert>
+#include <iostream>
 
 
 
@@ -10,35 +11,41 @@ namespace real_mouse
     template <concepts::moving_policy MovePolicy, concepts::trajectory Trajectory>
     void move(MovePolicy &&moving_policy, Trajectory &&trajectory)
     {
-        auto generator = ticks_generator{};
-        auto position = moving_policy.get_position();
+        point position;
 
         if constexpr (concepts::with_origin<Trajectory>)
         {
             position = trajectory.origin();
         }
-
-        for (auto ticks : generator)
+        else
         {
-            assert(ticks > 0);
+            position = moving_policy.get_position();
+        }
 
-            for (; ticks; --ticks)
+        for (auto sleeper = sleeping_iterator{}; sleeper != sleeping_iterator::sentinel{}; ++sleeper)
+        {
+            moving_policy.set_position(position);
+            
+            if constexpr (concepts::with_destination<Trajectory>)
             {
-                moving_policy.set_position(position);
-
-                if constexpr (concepts::with_destination<Trajectory>)
+                if (position == trajectory.destination()) [[unlikely]]
                 {
-                    if (position == trajectory.destination())
-                    {
-                        return;
-                    }
+                    return;
                 }
-
-                auto &&[next_point, time] = trajectory.next_point(position);
-
-                position = next_point;
-                generator.set_tick_duration(std::chrono::duration_cast<ticks_generator::duration_type>(time));
             }
+
+            if constexpr (concepts::with_conditional_end<Trajectory>)
+            {
+                if (trajectory.is_end(position)) [[unlikely]]
+                {
+                    return;
+                }
+            }
+
+            auto &&[next_point, time] = trajectory.next_point(position);
+
+            position = next_point;
+            sleeper.set_sleep_duration(std::chrono::duration_cast<sleeping_iterator::duration_type>(time));
         }
     }
 }

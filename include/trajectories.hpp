@@ -15,15 +15,10 @@ namespace real_mouse
         [[nodiscard]] point origin();
         [[nodiscard]] point destination();
         [[nodiscard]] std::pair<point, std::chrono::duration<double>> next_point(point current);
-        [[nodiscard]] size_t ticks_processed() const noexcept;
 
     private:
         point m_from;
         point m_to;
         double velocity;
-
-#ifndef NDEBUG
-        size_t m_ticks_processed;
-#endif
     };
 }

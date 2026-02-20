@@ -7,67 +7,47 @@
 
 namespace real_mouse
 {
-    ticks_generator::passed_ticks_count_iterator::passed_ticks_count_iterator(const ticks_generator &generator) noexcept(std::is_nothrow_default_constructible_v<time_point>)
-        : m_generator(&generator)
-        , m_last_deref_time()
-    {}
-
-    ticks_generator::passed_ticks_count_iterator::value_type ticks_generator::passed_ticks_count_iterator::operator * () const noexcept
+    sleeping_iterator::value_type sleeping_iterator::operator * ()
     {
-        assert(m_generator != nullptr);
-
-        auto last_deref_time = std::exchange(m_last_deref_time, clock_type::now());
-
-        if (last_deref_time == time_point{}) [[unlikely]] { return 1; }
-
-        if (m_generator->m_tick_duration == duration_type{}) [[unlikely]] { return 1; }
-
-        auto ticks_passed = (m_last_deref_time - last_deref_time) / m_generator->m_tick_duration;
-        assert(ticks_passed >= 0);
-
-        return static_cast<value_type>(ticks_passed);
+        return m_last_incr - m_prev_incr;
     }
 
-    ticks_generator::passed_ticks_count_iterator& ticks_generator::passed_ticks_count_iterator::operator ++ () noexcept
+    sleeping_iterator& sleeping_iterator::operator ++ ()
     {
-        using namespace std::chrono_literals;
+        if (m_last_incr == time_point{}) [[unlikely]]
+        {
+            m_last_incr = clock_type::now();
+        }
 
-        assert(m_generator != nullptr);
+        while (m_sleep_duration > (clock_type::now() - m_last_incr));
 
-        std::this_thread::sleep_for(m_generator->m_tick_duration);
-
+        m_prev_incr = std::exchange(m_last_incr, clock_type::now());
         return *this;
     }
 
-    ticks_generator::passed_ticks_count_iterator ticks_generator::passed_ticks_count_iterator::operator ++ (int) noexcept
+    sleeping_iterator sleeping_iterator::operator ++ (int)
     {
-        operator ++();
+        operator++();
         return *this;
     }
 
-    bool ticks_generator::passed_ticks_count_iterator::operator == (sentinel) const noexcept
+    bool sleeping_iterator::operator == (sentinel) const noexcept
     {
         return false;
     }
 
-
-
-    ticks_generator::ticks_generator(duration_type tick_duration/* = default_tick_duration*/) noexcept(std::is_nothrow_copy_constructible_v<duration_type>)
-        : m_tick_duration(tick_duration)
-    {}
-
-    void ticks_generator::set_tick_duration(duration_type tick_duration) noexcept(std::is_nothrow_copy_assignable_v<duration_type>)
+    bool sleeping_iterator::operator != (sentinel) const noexcept
     {
-        m_tick_duration = tick_duration;
+        return !(*this == sentinel{});
     }
 
-    ticks_generator::passed_ticks_count_iterator ticks_generator::begin() const noexcept(std::is_nothrow_constructible_v<time_point, const ticks_generator&>)
+    sleeping_iterator::time_point sleeping_iterator::last_deref() const noexcept
     {
-        return { *this };
+        return m_last_incr;
     }
 
-    ticks_generator::sentinel ticks_generator::end() const noexcept
+    void sleeping_iterator::set_sleep_duration(duration_type duration) noexcept(std::is_nothrow_copy_assignable_v<duration_type>)
     {
-        return {};
+        m_sleep_duration = duration;
     }
 }

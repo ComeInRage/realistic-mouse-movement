@@ -26,7 +26,8 @@ namespace real_mouse
         void set_position(point position)
         {
 #ifdef _WIN32
-#ifndef NDEBUG
+
+#ifdef DEBUG_COUNTERS
             ++m_set_position_count;
 #endif
             assert(position.x <= std::numeric_limits<int>::max());
@@ -54,7 +55,7 @@ namespace real_mouse
 #endif
         }
 
-#ifndef NDEBUG
+#ifdef DEBUG_COUNTERS
         [[nodiscard]] size_t set_positions_count() const noexcept
         {
             return m_set_position_count;

@@ -49,12 +49,6 @@ namespace real_mouse
         };
 
         template <typename T>
-        concept trajectory = requires(T && t, point current)
-        {
-            { t.next_point(current) } -> next_point_result;
-        };
-
-        template <typename T>
         concept with_origin = requires(T && t)
         {
             { t.origin() } -> std::convertible_to<point>;
@@ -65,5 +59,37 @@ namespace real_mouse
         {
             { t.destination() } -> std::convertible_to<point>;
         };
+
+        template <typename T>
+        concept with_conditional_end = requires(T && t, point current)
+        {
+            { t.is_end(current) } -> std::convertible_to<point>;
+        };
+
+        template <typename T>
+        concept trajectory = requires(T && t, point current)
+        {
+            requires with_destination<T> || with_conditional_end<T>;
+
+            { t.next_point(current) } -> next_point_result;
+        };
+    }
+
+    namespace arith
+    {
+        [[nodiscard]] static bool dequal(double a, double b) noexcept
+        {
+            return std::fabs(a - b) < std::numeric_limits<double>::epsilon();
+        }
+
+        [[nodiscard]] static bool dless(double a, double b) noexcept
+        {
+            return a < b && !dequal(a, b);
+        }
+
+        [[nodiscard]] static bool dgreater(double a, double b) noexcept
+        {
+            return a > b && !dequal(a, b);
+        }
     }
 }
