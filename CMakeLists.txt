@@ -4,11 +4,7 @@ project(realistic-mouse-movement C CXX)
 
 set(LIBRARY_NAME realistic-mouse-movement)
 
-add_compile_definitions(DEBUG_COUNTERS)
-
-add_library(${LIBRARY_NAME} STATIC src/common.cpp
-                                   src/mouse_moving_policy.cpp
-                                   src/ticks_generator.cpp
+add_library(${LIBRARY_NAME} STATIC src/mouse_moving_policy.cpp
                                    #src/tasks_queue.cpp
                                    src/trajectories.cpp
 )

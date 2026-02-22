@@ -1,7 +1,6 @@
 #pragma once
 
-#include "ticks_generator.hpp"
-
+#include <chrono>
 #include <cstdint>
 #include <concepts>
 
@@ -17,17 +16,25 @@ namespace real_mouse
         coord_type y;
     };
 
-    [[nodiscard]] inline bool operator == (point lhs, point rhs) noexcept { return static_cast<std::ptrdiff_t>(lhs.x) == static_cast<std::ptrdiff_t>(rhs.x) && static_cast<std::ptrdiff_t>(lhs.y) == static_cast<std::ptrdiff_t>(rhs.y); }
-    [[nodiscard]] inline bool operator != (point lhs, point rhs) noexcept { return !(lhs == rhs); }
-
     namespace concepts
-    { 
-        template <typename T>
-        concept moving_policy = requires(T && policy, point position)
+    {
+        namespace details // for concepts only
         {
-            { policy.set_position(position) };
-            { policy.get_position() } -> std::convertible_to<point>;
-        };
+            struct dummy_moving_policy;
+            struct dummy_trajectory;
+
+            struct dummy_moving_policy
+            {
+                [[deprecated]] void move(dummy_trajectory &); /* no-op */
+                [[deprecated]] void set_position(point); /* no-op */
+                [[deprecated]] point get_position() const; /* no-op */
+            };
+
+            struct dummy_trajectory
+            {
+                [[deprecated]] std::pair<point, std::chrono::nanoseconds> next_point(dummy_moving_policy &) const; /* no-op */
+            };
+        }
 
         template <typename T>
         struct is_duration {};
@@ -49,45 +56,42 @@ namespace real_mouse
         };
 
         template <typename T>
-        concept with_origin = requires(T && t)
+        concept with_start_position = requires(T && t)
         {
-            { t.origin() } -> std::convertible_to<point>;
+            { t.start_position() } -> std::convertible_to<point>;
         };
 
         template <typename T>
-        concept with_destination = requires(T && t)
+        concept trajectory = requires(T && t, details::dummy_moving_policy &moving_policy, point position)
         {
-            { t.destination() } -> std::convertible_to<point>;
+            { t.next_point(moving_policy, position) } -> next_point_result;
+            { t.is_ended(moving_policy, position) } -> std::convertible_to<bool>;
         };
 
         template <typename T>
-        concept with_conditional_end = requires(T && t, point current)
+        concept moving_policy = requires(T && policy, details::dummy_trajectory &traj, point position)
         {
-            { t.is_end(current) } -> std::convertible_to<point>;
-        };
-
-        template <typename T>
-        concept trajectory = requires(T && t, point current)
-        {
-            requires with_destination<T> || with_conditional_end<T>;
-
-            { t.next_point(current) } -> next_point_result;
+            { policy.move(traj) };
+            { policy.set_position(position) };
+            { policy.get_position() } -> std::convertible_to<point>;
         };
     }
 
     namespace arith
     {
-        [[nodiscard]] static bool dequal(double a, double b) noexcept
+        static constexpr size_t epsilon_factor = 10;
+
+        [[nodiscard]] static bool dequal(double a, double b, size_t factor = epsilon_factor)
         {
-            return std::fabs(a - b) < std::numeric_limits<double>::epsilon();
+            return std::fabs(a - b) < (std::numeric_limits<double>::epsilon() * factor);
         }
 
-        [[nodiscard]] static bool dless(double a, double b) noexcept
+        [[nodiscard]] static bool dless(double a, double b)
         {
             return a < b && !dequal(a, b);
         }
 
-        [[nodiscard]] static bool dgreater(double a, double b) noexcept
+        [[nodiscard]] static bool dgreater(double a, double b)
         {
             return a > b && !dequal(a, b);
         }

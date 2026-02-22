@@ -23,7 +23,7 @@ namespace real_mouse
 {
     void mouse_moving_policy::set_position(point position)
     {
-#ifdef DEBUG_COUNTERS
+#ifndef NDEBUG
         ++m_set_position_count;
 #endif
 
@@ -77,8 +77,8 @@ namespace real_mouse
 #endif
     }
 
-#ifdef DEBUG_COUNTERS
-    size_t mouse_moving_policy::set_positions_count() const noexcept
+#ifndef NDEBUG
+    size_t mouse_moving_policy::get_position_changes_count() const noexcept
     {
         return m_set_position_count;
     }

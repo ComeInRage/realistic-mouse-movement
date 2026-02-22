@@ -1,4 +1,7 @@
 #include "trajectories.hpp"
+#include "mouse_moving_policy.hpp"
+
+#include <cassert>
 
 
 
@@ -7,20 +10,21 @@ namespace real_mouse
     line::line(point from, point to, double velocity/* = 100 */) noexcept
         : m_from(from)
         , m_to(to)
-        , velocity(velocity)
+        , m_velocity(velocity)
     {}
 
-    point line::origin()
+    point line::start_position() const noexcept
     {
         return m_from;
     }
 
-    point line::destination()
+    bool line::is_ended(mouse_moving_policy &moving_policy, point position) const noexcept
     {
-        return m_to;
+        return static_cast<std::ptrdiff_t>(position.x) == static_cast<std::ptrdiff_t>(m_to.x)
+            && static_cast<std::ptrdiff_t>(position.y) == static_cast<std::ptrdiff_t>(m_to.y);
     }
 
-    std::pair<point, std::chrono::duration<double>> line::next_point(point current)
+    std::pair<point, std::chrono::duration<double>> line::next_point(mouse_moving_policy &moving_policy, point current) const
     {
         using namespace std::chrono_literals;
 
@@ -52,7 +56,7 @@ namespace real_mouse
             return { next, time };
         };
 
-        if (arith::dequal(velocity, 0)) { return { current, {} }; }
+        if (arith::dequal(m_velocity, 0)) { return { current, {} }; }
 
         auto distance_x = m_to.x - m_from.x;
         auto distance_y = m_to.y - m_from.y;
@@ -61,11 +65,11 @@ namespace real_mouse
 
         if (arith::dgreater(std::fabs(distance_y), std::fabs(distance_x)))
         {
-            auto res = calc_next(current.y, current.x, distance_y, distance_x, velocity);
+            auto res = calc_next(current.y, current.x, distance_y, distance_x, m_velocity);
             std::swap(res.first.x, res.first.y);
             return res;
         }
         
-        return calc_next(current.x, current.y, distance_x, distance_y, velocity);
+        return calc_next(current.x, current.y, distance_x, distance_y, m_velocity);
     }
 }

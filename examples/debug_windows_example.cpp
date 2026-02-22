@@ -25,17 +25,17 @@ int main()
 
     std::this_thread::sleep_for(3s);
 
-    auto velocity = 1'000.;
+    auto velocity = 1'00.;
 
     rm::mouse_moving_policy moving_policy;
-    auto trajectory = rm::line{ { 200., 200. }, { 300., 300. }, velocity };
+    auto trajectory = rm::line{ { 200., 200. }, { 1000., 300. }, velocity };
 
     auto before = std::chrono::steady_clock::now();
-    rm::move(moving_policy, trajectory);
+    moving_policy.move(trajectory);
     auto after = std::chrono::steady_clock::now();
 
     std::cout << std::format("Mouse moved {} times.\nTime elapsed: {}"sv,
-                             moving_policy.set_positions_count(),
+                             moving_policy.get_position_changes_count(),
                              std::chrono::duration_cast<std::chrono::milliseconds>(after - before)) << std::endl;
 
     return 0;
