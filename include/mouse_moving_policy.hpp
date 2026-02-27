@@ -24,7 +24,7 @@ namespace real_mouse
         [[nodiscard]] Derived& to_derived() noexcept;
 
     private:
-        point m_last_pos;
+        mutable point m_last_known_pos;
     };
 
     template <typename Derived>
@@ -35,7 +35,8 @@ namespace real_mouse
 
         if constexpr (concepts::with_start_position<Trajectory>)
         {
-            set_position(trajectory.start_position());
+            //set_position(trajectory.start_position());
+            (void)get_position();
         }
         else
         {
@@ -60,21 +61,21 @@ namespace real_mouse
     template <typename Derived>
     void move_controller_base<Derived>::set_position(point position) noexcept(std::is_nothrow_invocable_v<decltype(&Derived::set_position), Derived*, point>)
     {
-        m_last_pos = position;
+        m_last_known_pos = position;
         to_derived().set_position(position);
     }
 
     template <typename Derived>
     point move_controller_base<Derived>::get_position() const noexcept(std::is_nothrow_invocable_v<decltype(&Derived::get_position), Derived*>)
     {
-        m_last_pos = to_derived().get_position();
-        return m_last_pos;
+        m_last_known_pos = to_derived().get_position();
+        return m_last_known_pos;
     }
 
     template <typename Derived>
     point move_controller_base<Derived>::get_last_position() const noexcept
     {
-        return m_last_pos;
+        return m_last_known_pos;
     }
 
     template <typename Derived>

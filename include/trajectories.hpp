@@ -40,8 +40,12 @@ namespace real_mouse
         {
             assert(distance_x != 0);
 
-            auto delta_x = std::trunc(current_x + 1) - current_x;
+            auto direction_x = (distance_x > 0) ? 1 : -1;
+            auto direction_y = (distance_y > 0) ? 1 : -1;
+
+            auto delta_x = std::trunc(current_x + direction_x) - current_x;
             auto delta_y = (distance_y * delta_x) / distance_x;
+
             auto next = point{ current_x + delta_x, current_y + delta_y };
 
             // If next point will be reached on y-axis earlier, than on x-axis;
@@ -54,14 +58,13 @@ namespace real_mouse
                 delta_y = new_delta_y;
                 delta_x = delta_x / similarity_factor;
 
-                next.y = current_y + delta_y;
-                next.x = current_x + delta_x;
+                next = point{ current_x + delta_x, current_y + delta_y };
             }
 
             auto distance_to_next_point = std::sqrt(delta_x * delta_x + delta_y * delta_y);
-            auto time = std::chrono::duration<double>{ distance_to_next_point / velocity };
+            auto time_to_reach = std::chrono::duration<double>{ distance_to_next_point / velocity };
 
-            return { next, time };
+            return { next, time_to_reach };
         };
 
         auto current = moving_policy.get_last_position();
@@ -71,10 +74,10 @@ namespace real_mouse
             return { current, {} };
         }
 
-        auto distance_x = m_to.x - m_from.x;
-        auto distance_y = m_to.y - m_from.y;
+        auto distance_x = m_to.x - current.x;
+        auto distance_y = m_to.y - current.y;
 
-        if (arith::dless(distance_x, 1) && arith::dless(distance_y, 1))
+        if (arith::dless(std::fabs(distance_x), 1) && arith::dless(std::fabs(distance_y), 1))
         {
             return { current, {} };
         }

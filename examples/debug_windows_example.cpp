@@ -25,10 +25,10 @@ int main()
 
     std::this_thread::sleep_for(3s);
 
-    auto velocity = 1000.;
+    auto velocity = 10000.;
 
     rm::mouse_controller moving_policy;
-    auto trajectory = rm::straight_uniform_motion{ { 200., 200. }, { 1200., 200. }, velocity };
+    auto trajectory = rm::straight_uniform_motion{ { 200., 200. }, { 0., 0. }, velocity };
 
     auto before = std::chrono::steady_clock::now();
     moving_policy.move(trajectory);
