@@ -28,11 +28,13 @@ namespace real_mouse
                 [[deprecated]] void move(dummy_trajectory &); /* no-op */
                 [[deprecated]] void set_position(point); /* no-op */
                 [[deprecated]] point get_position() const; /* no-op */
+                [[deprecated]] point get_last_position() const noexcept; /* no-op */
             };
 
             struct dummy_trajectory
             {
                 [[deprecated]] std::pair<point, std::chrono::nanoseconds> next_point(dummy_moving_policy &) const; /* no-op */
+                [[deprecated]] bool is_ended(dummy_moving_policy &) const noexcept; /* no-op */
             };
         }
 
@@ -56,16 +58,18 @@ namespace real_mouse
         };
 
         template <typename T>
-        concept with_start_position = requires(T && t)
+        concept trajectory = requires(T && t, details::dummy_moving_policy &moving_policy)
         {
-            { t.start_position() } -> std::convertible_to<point>;
+            { t.next_point(moving_policy) } -> next_point_result;
+            { t.is_ended(moving_policy) } -> std::convertible_to<bool>;
         };
 
         template <typename T>
-        concept trajectory = requires(T && t, details::dummy_moving_policy &moving_policy, point position)
+        concept with_start_position = requires(T && t)
         {
-            { t.next_point(moving_policy, position) } -> next_point_result;
-            { t.is_ended(moving_policy, position) } -> std::convertible_to<bool>;
+            requires trajectory<T>;
+
+            { t.start_position() } -> std::convertible_to<point>;
         };
 
         template <typename T>
@@ -74,6 +78,16 @@ namespace real_mouse
             { policy.move(traj) };
             { policy.set_position(position) };
             { policy.get_position() } -> std::convertible_to<point>;
+            { policy.get_last_position() } -> std::convertible_to<point>;
+        };
+
+        template <typename T>
+        concept mouse_control = requires(T && mouse)
+        {
+            requires moving_policy<T>;
+
+            { mouse.push_up() };
+            { mouse.push_down() };
         };
     }
 

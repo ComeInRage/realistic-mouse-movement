@@ -15,19 +15,11 @@
 #ifdef min
 #undef min
 #endif
-#endif
-
-
 
 namespace real_mouse
 {
-    void mouse_moving_policy::set_position(point position)
+    void mouse_controller::set_position(point position)
     {
-#ifndef NDEBUG
-        ++m_set_position_count;
-#endif
-
-#ifdef _WIN32
         assert(position.x <= std::numeric_limits<int>::max());
         assert(position.y <= std::numeric_limits<int>::max());
 
@@ -35,14 +27,14 @@ namespace real_mouse
         {
             throw std::runtime_error{ "Unable to set cursor position" };
         }
-#else
-        static_assert(false, "Not implemented");
+
+#ifndef NDEBUG
+        ++position_changes_count;
 #endif
     }
 
-    point mouse_moving_policy::get_position() const
+    point mouse_controller::get_position() const
     {
-#ifdef _WIN32
         POINT pos{};
 
         if (!GetCursorPos(&pos))
@@ -52,35 +44,52 @@ namespace real_mouse
 
         assert(pos.x >= 0 && pos.y >= 0);
         return { static_cast<coord_type>(pos.x), static_cast<coord_type>(pos.y) };
-#else
-        static_assert(false, "Not implemented");
-#endif
     }
 
-    void mouse_moving_policy::push_down()
+    void mouse_controller::push_down()
     {
-#ifdef _WIN32
         INPUT input{};
         input.type = INPUT_MOUSE;
         input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
         SendInput(1, &input, sizeof(INPUT));
-#endif
     }
 
-    void mouse_moving_policy::push_up()
+    void mouse_controller::push_up()
     {
-#ifdef _WIN32
         INPUT input{};
         input.type = INPUT_MOUSE;
         input.mi.dwFlags = MOUSEEVENTF_LEFTUP;
         SendInput(1, &input, sizeof(INPUT));
+    }
+}
+
+#else
+
+namespace real_mouse
+{
+    void mouse_controller::set_position(point position)
+    {
+        static_assert(false, "Not implemented yet");
+
+#ifndef NDEBUG
+        ++position_changes_count;
 #endif
     }
 
-#ifndef NDEBUG
-    size_t mouse_moving_policy::get_position_changes_count() const noexcept
+    point mouse_controller::get_position() const
     {
-        return m_set_position_count;
+        static_assert(false, "Not implemented yet");
     }
-#endif
+
+    void mouse_controller::push_down()
+    {
+        static_assert(false, "Not implemented yet");
+    }
+
+    void mouse_controller::push_up()
+    {
+        static_assert(false, "Not implemented yet");
+    }
 }
+
+#endif
