@@ -14,7 +14,7 @@ namespace real_mouse
         using duration = std::chrono::duration<double>;
 
     public:
-        straight_uniform_motion(point from, point to, double velocity = 100) noexcept;
+        straight_uniform_motion(point to, double velocity = 100) noexcept;
 
     public:
         template <concepts::moving_policy Moving>
@@ -23,10 +23,7 @@ namespace real_mouse
         template <concepts::moving_policy Moving>
         [[nodiscard]] bool is_ended(Moving &&moving_policy) const noexcept;
 
-        [[nodiscard]] point start_position() const noexcept;
-
     private:
-        point m_from;
         point m_to;
         double m_velocity;
     };

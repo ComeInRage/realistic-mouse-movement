@@ -2,8 +2,6 @@
 
 #include "common.hpp"
 
-#include <thread>
-
 
 
 namespace real_mouse
@@ -35,8 +33,7 @@ namespace real_mouse
 
         if constexpr (concepts::with_start_position<Trajectory>)
         {
-            //set_position(trajectory.start_position());
-            (void)get_position();
+            set_position(trajectory.start_position());
         }
         else
         {
