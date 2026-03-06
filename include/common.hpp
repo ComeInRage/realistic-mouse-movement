@@ -8,12 +8,16 @@
 
 namespace real_mouse
 {
-    using coord_type = double;
-
     struct point
     {
-        coord_type x;
-        coord_type y;
+        double x;
+        double y;
+    };
+
+    struct velocity_vec
+    {
+        double vx;
+        double vy;
     };
 
     namespace concepts
@@ -25,49 +29,35 @@ namespace real_mouse
 
             struct dummy_moving_policy
             {
-                [[deprecated]] void move(dummy_trajectory &); /* no-op */
-                [[deprecated]] void set_position(point); /* no-op */
-                [[deprecated]] point get_position() const; /* no-op */
-                [[deprecated]] point get_last_position() const noexcept; /* no-op */
+                void move(dummy_trajectory &); /* no-op */
+                void set_position(point); /* no-op */
+                point get_position() const; /* no-op */
+                point get_last_position() const noexcept; /* no-op */
             };
 
             struct dummy_trajectory
             {
-                [[deprecated]] std::pair<point, std::chrono::nanoseconds> next_point(dummy_moving_policy &) const; /* no-op */
-                [[deprecated]] bool is_ended(dummy_moving_policy &) const noexcept; /* no-op */
+                std::optional<velocity_vec> approx_velocity(dummy_moving_policy &) const; /* no-op */
             };
         }
 
         template <typename T>
-        struct is_duration {};
-
-        template <typename Rep, typename Rat>
-        struct is_duration<std::chrono::duration<Rep, Rat>> { static constexpr bool value = true; };
-
-        template <typename T>
-        static constexpr bool is_duration_v = is_duration<T>::value;
-
-        template <typename T>
-        concept duration = is_duration_v<std::remove_reference_t<T>>;
-
-        template <typename T>
-        concept next_point_result = requires (T &&t)
+        concept approx_velocity = requires (T &&t)
         {
-            { t.first } -> std::convertible_to<point>;
-            { t.second } -> duration;
+            { *t } -> std::convertible_to<velocity_vec>;
+            { static_cast<bool>(t) } -> std::same_as<bool>;
         };
 
         template <typename T>
-        concept trajectory = requires(T && t, details::dummy_moving_policy &moving_policy)
+        concept approx_trajectory = requires(T && t, details::dummy_moving_policy &moving_policy)
         {
-            { t.next_point(moving_policy) } -> next_point_result;
-            { t.is_ended(moving_policy) } -> std::convertible_to<bool>;
+            { t.approx_velocity(moving_policy) } -> approx_velocity;
         };
 
         template <typename T>
         concept with_start_position = requires(T && t)
         {
-            requires trajectory<T>;
+            requires approx_trajectory<T>;
 
             { t.start_position() } -> std::convertible_to<point>;
         };
@@ -110,4 +100,23 @@ namespace real_mouse
             return a > b && !dequal(a, b);
         }
     }
+}
+
+[[nodiscard]] inline real_mouse::velocity_vec operator + (real_mouse::velocity_vec lhs, real_mouse::velocity_vec rhs) noexcept
+{
+    return { lhs.vx + rhs.vx, lhs.vy + rhs.vy };
+}
+
+[[nodiscard]] inline real_mouse::velocity_vec operator - (real_mouse::velocity_vec lhs, real_mouse::velocity_vec rhs) noexcept
+{
+    return { lhs.vx - rhs.vx, lhs.vy - rhs.vy };
+}
+
+template <typename VOpt>
+    requires std::same_as<VOpt, std::optional<real_mouse::velocity_vec>>
+[[nodiscard]] std::optional<real_mouse::velocity_vec> operator + (const VOpt &lhs, const VOpt &rhs) noexcept
+{
+    if (!lhs || !rhs) { return std::nullopt; }
+
+    return std::optional<real_mouse::velocity_vec>{ std::in_place, *lhs + *rhs };
 }

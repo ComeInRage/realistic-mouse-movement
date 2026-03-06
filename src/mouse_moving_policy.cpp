@@ -43,7 +43,7 @@ namespace real_mouse
         }
 
         assert(pos.x >= 0 && pos.y >= 0);
-        return { static_cast<coord_type>(pos.x), static_cast<coord_type>(pos.y) };
+        return { static_cast<double>(pos.x), static_cast<double>(pos.y) };
     }
 
     void mouse_controller::push_down()

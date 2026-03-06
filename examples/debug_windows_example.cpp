@@ -23,12 +23,9 @@ int main()
     using namespace std::literals;
     using namespace std::chrono_literals;
 
-    std::this_thread::sleep_for(3s);
-
-    auto velocity = 1000.;
-
     rm::mouse_controller moving_policy;
-    auto trajectory = rm::straight_uniform_motion{ { 0., 0. }, velocity };
+    auto trajectory = rm::straight_uniform_motio{ .dest = rm::point{ 1000., 0. }, .velocity = 1000. }
+                    | rm::straight_uniform_motio{ .dest = rm::point{ 0., 1000. }, .velocity = 1000. };
 
     auto before = std::chrono::steady_clock::now();
     moving_policy.move(trajectory);
